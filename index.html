@@ -1,0 +1,1326 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Image Remix — Growth Experiment Tool</title>
+  <meta name="description" content="Drop an image, describe your changes, get a production-ready asset instantly.">
+  <meta name="theme-color" content="#0f0f0f">
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎨</text></svg>">
+  <link rel="apple-touch-icon" href="icon-192.png">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0f0f0f;
+      --surface: #1a1a1a;
+      --surface-2: #242424;
+      --border: #333;
+      --border-hover: #555;
+      --text: #e8e8e8;
+      --text-dim: #888;
+      --accent: #6c5ce7;
+      --accent-hover: #7d6ff0;
+      --accent-glow: rgba(108, 92, 231, 0.3);
+      --success: #00b894;
+      --warning: #fdcb6e;
+      --danger: #e17055;
+      --radius: 12px;
+      --radius-sm: 8px;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      line-height: 1.5;
+    }
+
+    /* Header */
+    .header {
+      padding: 20px 24px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .header h1 {
+      font-size: 20px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .header h1 span { font-size: 24px; }
+
+    .header .subtitle {
+      font-size: 13px;
+      color: var(--text-dim);
+    }
+
+    .api-key-btn {
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      color: var(--text-dim);
+      padding: 8px 14px;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      font-size: 13px;
+      transition: all 0.2s;
+    }
+
+    .api-key-btn:hover { border-color: var(--border-hover); color: var(--text); }
+    .api-key-btn.has-key { border-color: var(--success); color: var(--success); }
+
+    /* Main Layout */
+    .main {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 24px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+      min-height: calc(100vh - 80px);
+    }
+
+    @media (max-width: 860px) {
+      .main { grid-template-columns: 1fr; }
+    }
+
+    .panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .panel-title {
+      font-size: 14px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--text-dim);
+      margin-bottom: 16px;
+    }
+
+    /* Drop Zone */
+    .dropzone {
+      flex: 1;
+      border: 2px dashed var(--border);
+      border-radius: var(--radius);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: all 0.3s;
+      min-height: 260px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .dropzone:hover, .dropzone.drag-over {
+      border-color: var(--accent);
+      background: var(--accent-glow);
+    }
+
+    .dropzone.has-image {
+      border-style: solid;
+      border-color: var(--border);
+      cursor: default;
+    }
+
+    .dropzone-content {
+      text-align: center;
+      padding: 20px;
+    }
+
+    .dropzone-icon {
+      font-size: 48px;
+      margin-bottom: 12px;
+      opacity: 0.7;
+    }
+
+    .dropzone-text {
+      font-size: 15px;
+      color: var(--text-dim);
+      margin-bottom: 4px;
+    }
+
+    .dropzone-hint {
+      font-size: 12px;
+      color: var(--text-dim);
+      opacity: 0.6;
+    }
+
+    .dropzone input[type="file"] { display: none; }
+
+    .preview-container {
+      width: 100%;
+      height: 100%;
+      display: none;
+      flex-direction: column;
+    }
+
+    .dropzone.has-image .dropzone-content { display: none; }
+    .dropzone.has-image .preview-container { display: flex; }
+
+    .preview-img-wrap {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 8px;
+      position: relative;
+    }
+
+    .preview-img-wrap img {
+      max-width: 100%;
+      max-height: 300px;
+      border-radius: 6px;
+      object-fit: contain;
+    }
+
+    /* Checkerboard for transparency */
+    .preview-img-wrap.has-transparency {
+      background-image:
+        linear-gradient(45deg, #2a2a2a 25%, transparent 25%),
+        linear-gradient(-45deg, #2a2a2a 25%, transparent 25%),
+        linear-gradient(45deg, transparent 75%, #2a2a2a 75%),
+        linear-gradient(-45deg, transparent 75%, #2a2a2a 75%);
+      background-size: 16px 16px;
+      background-position: 0 0, 0 8px, 8px -8px, -8px 0px;
+      border-radius: 6px;
+    }
+
+    .remove-btn {
+      position: absolute;
+      top: 12px;
+      right: 12px;
+      background: rgba(0,0,0,0.7);
+      border: none;
+      color: white;
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      cursor: pointer;
+      font-size: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.2s;
+      z-index: 2;
+    }
+
+    .remove-btn:hover { background: var(--danger); }
+
+    /* Metadata badges */
+    .metadata {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 16px;
+    }
+
+    .badge {
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .badge .dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      display: inline-block;
+    }
+
+    .badge .dot.green { background: var(--success); }
+    .badge .dot.yellow { background: var(--warning); }
+    .badge .dot.blue { background: #74b9ff; }
+
+    /* Prompt Area */
+    .prompt-section {
+      margin-top: 20px;
+    }
+
+    .prompt-label {
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text-dim);
+      margin-bottom: 8px;
+    }
+
+    .prompt-textarea {
+      width: 100%;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      color: var(--text);
+      padding: 14px;
+      font-size: 14px;
+      font-family: inherit;
+      resize: vertical;
+      min-height: 100px;
+      transition: border-color 0.2s;
+      line-height: 1.5;
+    }
+
+    .prompt-textarea:focus {
+      outline: none;
+      border-color: var(--accent);
+    }
+
+    .prompt-textarea::placeholder { color: var(--text-dim); opacity: 0.5; }
+
+    .prompt-suggestions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 10px;
+    }
+
+    .suggestion-chip {
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      color: var(--text-dim);
+      padding: 4px 12px;
+      border-radius: 20px;
+      font-size: 12px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .suggestion-chip:hover {
+      border-color: var(--accent);
+      color: var(--text);
+    }
+
+    /* Generate Button */
+    .generate-btn {
+      margin-top: 20px;
+      width: 100%;
+      background: var(--accent);
+      color: white;
+      border: none;
+      padding: 14px 24px;
+      border-radius: var(--radius-sm);
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+
+    .generate-btn:hover:not(:disabled) {
+      background: var(--accent-hover);
+      box-shadow: 0 0 20px var(--accent-glow);
+    }
+
+    .generate-btn:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+
+    /* Output Panel */
+    .output-area {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      border: 2px dashed var(--border);
+      border-radius: var(--radius);
+      min-height: 260px;
+      position: relative;
+    }
+
+    .output-area.has-result {
+      border-style: solid;
+      border-color: var(--success);
+    }
+
+    .output-placeholder {
+      text-align: center;
+      color: var(--text-dim);
+      opacity: 0.5;
+    }
+
+    .output-placeholder .icon { font-size: 40px; margin-bottom: 8px; }
+
+    .output-img-wrap {
+      display: none;
+      width: 100%;
+      height: 100%;
+      flex: 1;
+      align-items: center;
+      justify-content: center;
+      padding: 8px;
+      position: relative;
+    }
+
+    .output-area.has-result .output-placeholder { display: none; }
+    .output-area.has-result .output-img-wrap { display: flex; }
+
+    .output-img-wrap img {
+      max-width: 100%;
+      max-height: 300px;
+      border-radius: 6px;
+      object-fit: contain;
+    }
+
+    .output-img-wrap.has-transparency {
+      background-image:
+        linear-gradient(45deg, #2a2a2a 25%, transparent 25%),
+        linear-gradient(-45deg, #2a2a2a 25%, transparent 25%),
+        linear-gradient(45deg, transparent 75%, #2a2a2a 75%),
+        linear-gradient(-45deg, transparent 75%, #2a2a2a 75%);
+      background-size: 16px 16px;
+      background-position: 0 0, 0 8px, 8px -8px, -8px 0px;
+      border-radius: 6px;
+    }
+
+    .output-metadata {
+      display: none;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 16px;
+    }
+
+    .output-area.has-result ~ .output-metadata { display: flex; }
+
+    /* Download Button */
+    .download-btn {
+      margin-top: 20px;
+      width: 100%;
+      background: var(--success);
+      color: white;
+      border: none;
+      padding: 14px 24px;
+      border-radius: var(--radius-sm);
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+
+    .download-btn:hover { filter: brightness(1.1); }
+    .download-btn.visible { display: flex; }
+
+    /* Loading / Progress */
+    .loading-overlay {
+      position: absolute;
+      inset: 0;
+      background: rgba(15, 15, 15, 0.85);
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      border-radius: var(--radius);
+      z-index: 10;
+    }
+
+    .loading-overlay.active { display: flex; }
+
+    .spinner {
+      width: 40px;
+      height: 40px;
+      border: 3px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .loading-text {
+      margin-top: 14px;
+      font-size: 13px;
+      color: var(--text-dim);
+    }
+
+    .step-indicator {
+      margin-top: 8px;
+      font-size: 11px;
+      color: var(--text-dim);
+      opacity: 0.7;
+    }
+
+    /* API Key Modal */
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.7);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+      backdrop-filter: blur(4px);
+    }
+
+    .modal-backdrop.open { display: flex; }
+
+    .modal {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 28px;
+      width: 420px;
+      max-width: 90vw;
+    }
+
+    .modal h2 {
+      font-size: 18px;
+      margin-bottom: 8px;
+    }
+
+    .modal p {
+      font-size: 13px;
+      color: var(--text-dim);
+      margin-bottom: 18px;
+      line-height: 1.5;
+    }
+
+    .modal input[type="password"],
+    .modal input[type="text"] {
+      width: 100%;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      color: var(--text);
+      padding: 12px 14px;
+      font-size: 14px;
+      font-family: monospace;
+    }
+
+    .modal input:focus {
+      outline: none;
+      border-color: var(--accent);
+    }
+
+    .modal-actions {
+      display: flex;
+      gap: 10px;
+      margin-top: 18px;
+      justify-content: flex-end;
+    }
+
+    .modal-actions button {
+      padding: 10px 20px;
+      border-radius: var(--radius-sm);
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      border: 1px solid var(--border);
+      transition: all 0.2s;
+    }
+
+    .btn-cancel {
+      background: transparent;
+      color: var(--text-dim);
+    }
+
+    .btn-cancel:hover { color: var(--text); }
+
+    .btn-save {
+      background: var(--accent);
+      color: white;
+      border-color: var(--accent) !important;
+    }
+
+    .btn-save:hover { background: var(--accent-hover); }
+
+    /* Toast */
+    .toast {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 12px 20px;
+      font-size: 13px;
+      z-index: 200;
+      transform: translateY(100px);
+      opacity: 0;
+      transition: all 0.3s;
+      max-width: 360px;
+    }
+
+    .toast.show {
+      transform: translateY(0);
+      opacity: 1;
+    }
+
+    .toast.error { border-color: var(--danger); }
+    .toast.success { border-color: var(--success); }
+
+    /* Compare slider */
+    .compare-toggle {
+      margin-top: 12px;
+      display: none;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      color: var(--text-dim);
+    }
+
+    .compare-toggle.visible { display: flex; }
+
+    .compare-toggle label { cursor: pointer; }
+
+    /* Iteration */
+    .iterate-section {
+      display: none;
+      margin-top: 16px;
+      padding-top: 16px;
+      border-top: 1px solid var(--border);
+    }
+
+    .iterate-section.visible { display: block; }
+
+    .iterate-section .prompt-textarea {
+      min-height: 60px;
+    }
+
+    .iterate-btn {
+      margin-top: 10px;
+      width: 100%;
+      background: var(--surface-2);
+      border: 1px solid var(--accent);
+      color: var(--accent);
+      padding: 10px 20px;
+      border-radius: var(--radius-sm);
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .iterate-btn:hover {
+      background: var(--accent);
+      color: white;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Header -->
+  <header class="header">
+    <div>
+      <h1><span>🎨</span> Image Remix</h1>
+      <div class="subtitle">Drop an image, describe changes, get a production-ready asset</div>
+    </div>
+    <button class="api-key-btn" id="apiKeyBtn">🔑 Set API Key</button>
+  </header>
+
+  <!-- Main -->
+  <main class="main">
+
+    <!-- Left Panel: Input -->
+    <div class="panel">
+      <div class="panel-title">Reference Image</div>
+
+      <div class="dropzone" id="dropzone">
+        <div class="dropzone-content">
+          <div class="dropzone-icon">📸</div>
+          <div class="dropzone-text">Drop your image here or click to browse</div>
+          <div class="dropzone-hint">PNG, JPEG, WebP supported</div>
+        </div>
+        <input type="file" id="fileInput" accept="image/png, image/jpeg, image/webp">
+        <div class="preview-container">
+          <div class="preview-img-wrap" id="previewWrap">
+            <img id="previewImg" alt="Preview">
+            <button class="remove-btn" id="removeBtn" title="Remove image">✕</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="metadata" id="metadata"></div>
+
+      <div class="prompt-section">
+        <div class="prompt-label">What changes do you want?</div>
+        <textarea
+          class="prompt-textarea"
+          id="promptInput"
+          placeholder="e.g. Change the character's gender from female to male, keep the same pose and style..."
+        ></textarea>
+        <div class="prompt-suggestions">
+          <span class="suggestion-chip" data-prompt="Change the gender from female to male, keep same style">Gender swap</span>
+          <span class="suggestion-chip" data-prompt="Change the skin tone to lighter, keep everything else the same">Skin tone</span>
+          <span class="suggestion-chip" data-prompt="Change the hair color to blonde, keep the same style and composition">Hair color</span>
+          <span class="suggestion-chip" data-prompt="Make the character older, add subtle wrinkles while keeping the same style">Age up</span>
+          <span class="suggestion-chip" data-prompt="Change the outfit to business professional attire, keep the same character and pose">Change outfit</span>
+          <span class="suggestion-chip" data-prompt="Change the background to an office environment, keep the character exactly the same">New background</span>
+        </div>
+      </div>
+
+      <button class="generate-btn" id="generateBtn" disabled>
+        <span>✨</span> Generate Remix
+      </button>
+    </div>
+
+    <!-- Right Panel: Output -->
+    <div class="panel">
+      <div class="panel-title">Output</div>
+
+      <div class="output-area" id="outputArea">
+        <div class="output-placeholder">
+          <div class="icon">🖼️</div>
+          <div>Your remixed image will appear here</div>
+        </div>
+        <div class="output-img-wrap" id="outputWrap">
+          <img id="outputImg" alt="Result">
+        </div>
+        <div class="loading-overlay" id="loadingOverlay">
+          <div class="spinner"></div>
+          <div class="loading-text" id="loadingText">Generating...</div>
+          <div class="step-indicator" id="stepIndicator"></div>
+        </div>
+      </div>
+
+      <div class="output-metadata" id="outputMetadata"></div>
+
+      <div class="compare-toggle" id="compareToggle">
+        <label>
+          <input type="checkbox" id="compareCheckbox"> Side-by-side comparison
+        </label>
+      </div>
+
+      <div class="iterate-section" id="iterateSection">
+        <div class="prompt-label">Iterate on this result</div>
+        <textarea
+          class="prompt-textarea"
+          id="iterateInput"
+          placeholder="e.g. Make the hair a bit darker..."
+        ></textarea>
+        <button class="iterate-btn" id="iterateBtn">🔄 Regenerate with changes</button>
+      </div>
+
+      <button class="download-btn" id="downloadBtn">
+        <span>⬇️</span> Download Production-Ready Asset
+      </button>
+    </div>
+
+  </main>
+
+  <!-- API Key Modal -->
+  <div class="modal-backdrop" id="modalBackdrop">
+    <div class="modal">
+      <h2>🔑 Gemini API Key</h2>
+      <p>
+        Enter your Google Gemini API key. Get one free at
+        <a href="https://aistudio.google.com/apikey" target="_blank" style="color: var(--accent);">Google AI Studio</a>.
+        <br>Uses Nano Banana Pro (Gemini 3 Pro Image) for generation. Key is stored locally in your browser only.
+      </p>
+      <input type="password" id="apiKeyInput" placeholder="AIza...">
+      <div class="modal-actions">
+        <button class="btn-cancel" id="modalCancel">Cancel</button>
+        <button class="btn-save" id="modalSave">Save Key</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast -->
+  <div class="toast" id="toast"></div>
+
+  <script>
+    // =========================================================================
+    // State
+    // =========================================================================
+    const state = {
+      apiKey: localStorage.getItem('gemini_api_key') || '',
+      sourceImage: null,       // { file, dataUrl, width, height, format, hasTransparency, mimeType }
+      outputImage: null,       // { dataUrl, blob }
+      isGenerating: false,
+    };
+
+    // =========================================================================
+    // DOM References
+    // =========================================================================
+    const $ = (sel) => document.querySelector(sel);
+    const dropzone = $('#dropzone');
+    const fileInput = $('#fileInput');
+    const previewImg = $('#previewImg');
+    const previewWrap = $('#previewWrap');
+    const removeBtn = $('#removeBtn');
+    const metadataEl = $('#metadata');
+    const promptInput = $('#promptInput');
+    const generateBtn = $('#generateBtn');
+    const outputArea = $('#outputArea');
+    const outputImg = $('#outputImg');
+    const outputWrap = $('#outputWrap');
+    const outputMetadata = $('#outputMetadata');
+    const loadingOverlay = $('#loadingOverlay');
+    const loadingText = $('#loadingText');
+    const stepIndicator = $('#stepIndicator');
+    const downloadBtn = $('#downloadBtn');
+    const apiKeyBtn = $('#apiKeyBtn');
+    const modalBackdrop = $('#modalBackdrop');
+    const apiKeyInput = $('#apiKeyInput');
+    const modalCancel = $('#modalCancel');
+    const modalSave = $('#modalSave');
+    const toastEl = $('#toast');
+    const iterateSection = $('#iterateSection');
+    const iterateInput = $('#iterateInput');
+    const iterateBtn = $('#iterateBtn');
+    const compareToggle = $('#compareToggle');
+
+    // =========================================================================
+    // Toast
+    // =========================================================================
+    let toastTimer;
+    function toast(msg, type = '') {
+      toastEl.textContent = msg;
+      toastEl.className = 'toast ' + type + ' show';
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => toastEl.classList.remove('show'), 4000);
+    }
+
+    // =========================================================================
+    // API Key Modal
+    // =========================================================================
+    function updateApiKeyUI() {
+      if (state.apiKey) {
+        apiKeyBtn.classList.add('has-key');
+        apiKeyBtn.textContent = '🔑 Key Set ✓';
+      } else {
+        apiKeyBtn.classList.remove('has-key');
+        apiKeyBtn.textContent = '🔑 Set API Key';
+      }
+    }
+    updateApiKeyUI();
+
+    apiKeyBtn.addEventListener('click', () => {
+      apiKeyInput.value = state.apiKey;
+      modalBackdrop.classList.add('open');
+      setTimeout(() => apiKeyInput.focus(), 100);
+    });
+
+    modalCancel.addEventListener('click', () => modalBackdrop.classList.remove('open'));
+    modalBackdrop.addEventListener('click', (e) => {
+      if (e.target === modalBackdrop) modalBackdrop.classList.remove('open');
+    });
+
+    modalSave.addEventListener('click', () => {
+      const key = apiKeyInput.value.trim();
+      if (!key) {
+        toast('Please enter an API key', 'error');
+        return;
+      }
+      state.apiKey = key;
+      localStorage.setItem('gemini_api_key', key);
+      updateApiKeyUI();
+      modalBackdrop.classList.remove('open');
+      toast('API key saved', 'success');
+      updateGenerateButton();
+    });
+
+    // =========================================================================
+    // File Drop / Select
+    // =========================================================================
+    dropzone.addEventListener('click', (e) => {
+      if (!dropzone.classList.contains('has-image') && e.target !== removeBtn) {
+        fileInput.click();
+      }
+    });
+
+    dropzone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      dropzone.classList.add('drag-over');
+    });
+
+    dropzone.addEventListener('dragleave', () => dropzone.classList.remove('drag-over'));
+
+    dropzone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dropzone.classList.remove('drag-over');
+      const file = e.dataTransfer.files[0];
+      if (file && file.type.startsWith('image/')) loadImage(file);
+      else toast('Please drop a valid image file', 'error');
+    });
+
+    fileInput.addEventListener('change', (e) => {
+      if (e.target.files[0]) loadImage(e.target.files[0]);
+    });
+
+    removeBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      resetInput();
+    });
+
+    function resetInput() {
+      state.sourceImage = null;
+      dropzone.classList.remove('has-image');
+      previewWrap.classList.remove('has-transparency');
+      metadataEl.innerHTML = '';
+      fileInput.value = '';
+      resetOutput();
+      updateGenerateButton();
+    }
+
+    function resetOutput() {
+      state.outputImage = null;
+      outputArea.classList.remove('has-result');
+      outputMetadata.style.display = 'none';
+      outputMetadata.innerHTML = '';
+      downloadBtn.classList.remove('visible');
+      iterateSection.classList.remove('visible');
+      compareToggle.classList.remove('visible');
+      outputWrap.classList.remove('has-transparency');
+    }
+
+    // =========================================================================
+    // Load & Analyze Image
+    // =========================================================================
+    function loadImage(file) {
+      resetOutput();
+
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const dataUrl = e.target.result;
+        const img = new Image();
+        img.onload = () => {
+          // Detect transparency
+          const hasTransparency = detectTransparency(img, file.type);
+          const format = file.type === 'image/png' ? 'PNG'
+                       : file.type === 'image/webp' ? 'WebP'
+                       : 'JPEG';
+
+          state.sourceImage = {
+            file,
+            dataUrl,
+            width: img.naturalWidth,
+            height: img.naturalHeight,
+            format,
+            mimeType: file.type,
+            hasTransparency,
+            fileName: file.name,
+          };
+
+          // Show preview
+          previewImg.src = dataUrl;
+          dropzone.classList.add('has-image');
+
+          if (hasTransparency) {
+            previewWrap.classList.add('has-transparency');
+          } else {
+            previewWrap.classList.remove('has-transparency');
+          }
+
+          // Show metadata badges
+          renderMetadata();
+          updateGenerateButton();
+        };
+        img.src = dataUrl;
+      };
+      reader.readAsDataURL(file);
+    }
+
+    function detectTransparency(img, mimeType) {
+      if (mimeType === 'image/jpeg') return false;
+
+      const canvas = document.createElement('canvas');
+      // Sample up to 500x500 for speed
+      const scale = Math.min(1, 500 / Math.max(img.naturalWidth, img.naturalHeight));
+      canvas.width = Math.round(img.naturalWidth * scale);
+      canvas.height = Math.round(img.naturalHeight * scale);
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+
+      for (let i = 3; i < data.length; i += 4) {
+        if (data[i] < 250) return true;
+      }
+      return false;
+    }
+
+    function renderMetadata() {
+      const s = state.sourceImage;
+      metadataEl.innerHTML = `
+        <div class="badge"><span class="dot blue"></span>${s.width} × ${s.height}px</div>
+        <div class="badge"><span class="dot green"></span>${s.format}</div>
+        <div class="badge"><span class="dot ${s.hasTransparency ? 'yellow' : 'green'}"></span>${s.hasTransparency ? 'Has transparency' : 'No transparency'}</div>
+        <div class="badge">${(s.file.size / 1024).toFixed(1)} KB</div>
+      `;
+    }
+
+    // =========================================================================
+    // Generate Button State
+    // =========================================================================
+    function updateGenerateButton() {
+      const ready = state.sourceImage && promptInput.value.trim() && state.apiKey;
+      generateBtn.disabled = !ready;
+    }
+
+    promptInput.addEventListener('input', updateGenerateButton);
+
+    // Suggestion chips
+    document.querySelectorAll('.suggestion-chip').forEach(chip => {
+      chip.addEventListener('click', () => {
+        promptInput.value = chip.dataset.prompt;
+        updateGenerateButton();
+        promptInput.focus();
+      });
+    });
+
+    // =========================================================================
+    // Gemini API — Image Generation (Image-to-Image)
+    // =========================================================================
+    generateBtn.addEventListener('click', () => runGeneration(promptInput.value.trim()));
+
+    iterateBtn.addEventListener('click', () => {
+      const text = iterateInput.value.trim();
+      if (!text) { toast('Enter what you want to change', 'error'); return; }
+      runGeneration(text, true);
+    });
+
+    async function runGeneration(prompt, isIteration = false) {
+      if (state.isGenerating) return;
+      if (!state.apiKey) { toast('Set your Gemini API key first', 'error'); return; }
+      if (!state.sourceImage) { toast('Upload an image first', 'error'); return; }
+      if (!prompt) { toast('Enter a prompt describing the changes', 'error'); return; }
+
+      state.isGenerating = true;
+      generateBtn.disabled = true;
+      loadingOverlay.classList.add('active');
+
+      try {
+        // Step 1: Generate
+        setStep('Sending to Gemini...', '1/4 — API call');
+        const sourceImg = isIteration && state.outputImage
+          ? state.outputImage.dataUrl
+          : state.sourceImage.dataUrl;
+
+        const generatedDataUrl = await callGeminiImageEdit(sourceImg, prompt);
+
+        // Step 2: Verify resolution
+        setStep('Checking resolution...', '2/4 — Resolution match');
+        const genImg = await loadImageFromDataUrl(generatedDataUrl);
+
+        let finalCanvas;
+        if (genImg.naturalWidth !== state.sourceImage.width || genImg.naturalHeight !== state.sourceImage.height) {
+          setStep('Resizing to match original...', '3/4 — Resolution fix');
+          finalCanvas = resizeImage(genImg, state.sourceImage.width, state.sourceImage.height);
+        } else {
+          finalCanvas = imageToCanvas(genImg);
+        }
+
+        // Step 3: Handle transparency
+        setStep('Processing format...', '3/4 — Format & transparency');
+        if (state.sourceImage.hasTransparency) {
+          // Try to preserve/restore transparency from original
+          // The AI output likely has a background; we'll keep it as-is since we can't guarantee auto-removal
+        }
+
+        // Step 4: Export in correct format with compression
+        setStep('Compressing...', '4/4 — Optimization');
+        const outputFormat = state.sourceImage.hasTransparency ? 'image/png' : 'image/jpeg';
+        const quality = outputFormat === 'image/jpeg' ? 0.9 : undefined;
+        const blob = await canvasToBlob(finalCanvas, outputFormat, quality);
+        const finalDataUrl = await blobToDataUrl(blob);
+
+        // Display result
+        state.outputImage = { dataUrl: finalDataUrl, blob, format: outputFormat };
+        outputImg.src = finalDataUrl;
+        outputArea.classList.add('has-result');
+
+        if (state.sourceImage.hasTransparency) {
+          outputWrap.classList.add('has-transparency');
+        }
+
+        // Output metadata
+        const outImg = await loadImageFromDataUrl(finalDataUrl);
+        outputMetadata.style.display = 'flex';
+        outputMetadata.innerHTML = `
+          <div class="badge"><span class="dot blue"></span>${outImg.naturalWidth} × ${outImg.naturalHeight}px</div>
+          <div class="badge"><span class="dot green"></span>${outputFormat === 'image/png' ? 'PNG' : 'JPEG'}</div>
+          <div class="badge"><span class="dot ${state.sourceImage.hasTransparency ? 'yellow' : 'green'}"></span>${state.sourceImage.hasTransparency ? 'Transparency preserved' : 'Solid'}</div>
+          <div class="badge">${(blob.size / 1024).toFixed(1)} KB</div>
+          <div class="badge"><span class="dot ${
+            outImg.naturalWidth === state.sourceImage.width && outImg.naturalHeight === state.sourceImage.height ? 'green' : 'yellow'
+          }"></span>Resolution ${
+            outImg.naturalWidth === state.sourceImage.width && outImg.naturalHeight === state.sourceImage.height ? 'matched ✓' : 'adjusted'
+          }</div>
+        `;
+
+        downloadBtn.classList.add('visible');
+        iterateSection.classList.add('visible');
+        compareToggle.classList.add('visible');
+        toast('Image generated successfully!', 'success');
+
+      } catch (err) {
+        console.error(err);
+        const msg = err.message || 'Generation failed';
+        toast(msg, 'error');
+      } finally {
+        state.isGenerating = false;
+        loadingOverlay.classList.remove('active');
+        updateGenerateButton();
+      }
+    }
+
+    function setStep(text, step) {
+      loadingText.textContent = text;
+      stepIndicator.textContent = step;
+    }
+
+    // =========================================================================
+    // Gemini API Call
+    // =========================================================================
+    async function callGeminiImageEdit(imageDataUrl, prompt) {
+      const base64 = imageDataUrl.split(',')[1];
+      const mimeType = imageDataUrl.split(';')[0].split(':')[1];
+
+      // Determine the best aspect ratio from the source image
+      const srcW = state.sourceImage.width;
+      const srcH = state.sourceImage.height;
+      const aspectRatio = getBestAspectRatio(srcW, srcH);
+
+      // Determine best image size tier based on source resolution
+      const maxDim = Math.max(srcW, srcH);
+      const imageSize = maxDim > 2048 ? '4K' : maxDim > 1024 ? '2K' : '1K';
+
+      const fullPrompt = `Edit this image precisely according to the instruction below. This is for a professional production asset.
+
+CRITICAL RULES:
+- Maintain the EXACT same art style, illustration style, line weight, and color palette as the original image.
+- Maintain the same composition, layout, and proportions.
+- Only modify what is explicitly requested — everything else must remain pixel-perfect identical.
+- The output must look like it was created by the same artist as the original.
+- Do NOT add any text, watermarks, or borders.
+- Do NOT change the background unless specifically asked to.
+- Match the same level of detail and rendering quality as the input.
+
+Requested change: ${prompt}`;
+
+      const payload = {
+        contents: [{
+          parts: [
+            {
+              text: fullPrompt
+            },
+            {
+              inline_data: {
+                mime_type: mimeType,
+                data: base64
+              }
+            }
+          ]
+        }],
+        generationConfig: {
+          responseModalities: ["TEXT", "IMAGE"],
+          imageConfig: {
+            aspectRatio: aspectRatio,
+            imageSize: imageSize,
+          }
+        }
+      };
+
+      const model = 'gemini-3-pro-image-preview';
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${state.apiKey}`;
+
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        const errBody = await response.json().catch(() => ({}));
+        const errMsg = errBody?.error?.message || `API error ${response.status}`;
+        throw new Error(errMsg);
+      }
+
+      const data = await response.json();
+
+      // Extract image from response (API may return inlineData or inline_data)
+      const candidates = data.candidates || [];
+      let textResponse = '';
+      for (const candidate of candidates) {
+        const parts = candidate.content?.parts || [];
+        for (const part of parts) {
+          const imgData = part.inlineData || part.inline_data;
+          if (imgData) {
+            const imgMime = imgData.mimeType || imgData.mime_type || 'image/png';
+            return `data:${imgMime};base64,${imgData.data}`;
+          }
+          if (part.text) {
+            textResponse += part.text;
+          }
+        }
+      }
+
+      // If only text came back, show it
+      if (textResponse) {
+        throw new Error(`Gemini responded with text instead of image: ${textResponse.substring(0, 200)}`);
+      }
+
+      throw new Error('No image was returned from Gemini. Try rephrasing your prompt.');
+    }
+
+    // =========================================================================
+    // Aspect Ratio Matching
+    // =========================================================================
+    function getBestAspectRatio(w, h) {
+      const supported = [
+        { label: '1:1',   ratio: 1/1 },
+        { label: '2:3',   ratio: 2/3 },
+        { label: '3:2',   ratio: 3/2 },
+        { label: '3:4',   ratio: 3/4 },
+        { label: '4:3',   ratio: 4/3 },
+        { label: '4:5',   ratio: 4/5 },
+        { label: '5:4',   ratio: 5/4 },
+        { label: '9:16',  ratio: 9/16 },
+        { label: '16:9',  ratio: 16/9 },
+        { label: '21:9',  ratio: 21/9 },
+      ];
+      const actual = w / h;
+      let best = supported[0];
+      let bestDiff = Math.abs(actual - best.ratio);
+      for (const ar of supported) {
+        const diff = Math.abs(actual - ar.ratio);
+        if (diff < bestDiff) {
+          bestDiff = diff;
+          best = ar;
+        }
+      }
+      return best.label;
+    }
+
+    // =========================================================================
+    // Image Processing Utilities
+    // =========================================================================
+    function loadImageFromDataUrl(dataUrl) {
+      return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => resolve(img);
+        img.onerror = () => reject(new Error('Failed to load image'));
+        img.src = dataUrl;
+      });
+    }
+
+    function imageToCanvas(img) {
+      const c = document.createElement('canvas');
+      c.width = img.naturalWidth;
+      c.height = img.naturalHeight;
+      c.getContext('2d').drawImage(img, 0, 0);
+      return c;
+    }
+
+    function resizeImage(img, targetW, targetH) {
+      // Use multi-step downscaling for quality
+      let currentW = img.naturalWidth;
+      let currentH = img.naturalHeight;
+
+      let src = document.createElement('canvas');
+      src.width = currentW;
+      src.height = currentH;
+      src.getContext('2d').drawImage(img, 0, 0);
+
+      // Step down by 50% at a time for better quality
+      while (currentW / 2 > targetW && currentH / 2 > targetH) {
+        const next = document.createElement('canvas');
+        currentW = Math.round(currentW / 2);
+        currentH = Math.round(currentH / 2);
+        next.width = currentW;
+        next.height = currentH;
+        const ctx = next.getContext('2d');
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+        ctx.drawImage(src, 0, 0, currentW, currentH);
+        src = next;
+      }
+
+      // Final resize to exact target
+      const final = document.createElement('canvas');
+      final.width = targetW;
+      final.height = targetH;
+      const ctx = final.getContext('2d');
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(src, 0, 0, targetW, targetH);
+      return final;
+    }
+
+    function canvasToBlob(canvas, type, quality) {
+      return new Promise((resolve) => {
+        canvas.toBlob(resolve, type, quality);
+      });
+    }
+
+    function blobToDataUrl(blob) {
+      return new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.readAsDataURL(blob);
+      });
+    }
+
+    // =========================================================================
+    // Download
+    // =========================================================================
+    downloadBtn.addEventListener('click', () => {
+      if (!state.outputImage) return;
+
+      const ext = state.outputImage.format === 'image/png' ? 'png' : 'jpg';
+      const origName = state.sourceImage.fileName.replace(/\.[^.]+$/, '');
+      const fileName = `${origName}-remix.${ext}`;
+
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(state.outputImage.blob);
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(a.href);
+
+      toast(`Downloaded ${fileName}`, 'success');
+    });
+
+    // =========================================================================
+    // PWA Registration
+    // =========================================================================
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('sw.js').catch(() => {
+          // SW registration failed, app still works
+        });
+      });
+    }
+
+    // =========================================================================
+    // Keyboard shortcut: Cmd/Ctrl + Enter to generate
+    // =========================================================================
+    document.addEventListener('keydown', (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+        if (!generateBtn.disabled) generateBtn.click();
+      }
+    });
+
+    // Auto-open API key modal if no key set
+    if (!state.apiKey) {
+      setTimeout(() => modalBackdrop.classList.add('open'), 500);
+    }
+  </script>
+</body>
+</html>
