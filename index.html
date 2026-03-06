@@ -1150,6 +1150,10 @@
       const srcH = state.sourceImage.height;
       const aspectRatio = getBestAspectRatio(srcW, srcH);
 
+      // Detect if user is asking to change the human figure itself
+      const humanChangeKeywords = ['gender', 'male', 'female', 'skin tone', 'skin color', 'hair', 'age', 'older', 'younger', 'fat', 'thin', 'muscular', 'build', 'body', 'outfit', 'clothes', 'dress', 'expression', 'smile', 'look', 'pose', 'position', 'size'];
+      const isChangingHuman = humanChangeKeywords.some(keyword => prompt.toLowerCase().includes(keyword));
+
       // Calculate dimensional constraints for body preservation
       const maxBodyHeightPercent = 60; // Bodies typically don't exceed 60% of image height
       const minBodyHeightPercent = 25; // Minimum to prevent compression
@@ -1158,6 +1162,38 @@
       // Determine best image size tier based on source resolution
       const maxDim = Math.max(srcW, srcH);
       const imageSize = maxDim > 2048 ? '4K' : maxDim > 1024 ? '2K' : '1K';
+
+      // Build context-aware prompt sections
+      const proportionRules = isChangingHuman
+        ? `HUMAN FIGURE MODIFICATION (CONTEXT-AWARE):
+- You may modify the requested aspects of the human figure (gender, appearance, age, build, etc.)
+- When modifying the human: maintain natural human proportions and anatomy for the new version
+- Do NOT introduce unrealistic distortions, compression, or anatomical impossibilities
+- If changing height, width, build, or body type, keep proportions anatomically plausible
+- Preserve the overall style and artistic consistency while applying the requested changes`
+        : `HUMAN FIGURE PRESERVATION (ABSOLUTE REQUIREMENT):
+- PRESERVE EXACT BODY PROPORTIONS: Every human figure must maintain identical proportions for head, torso, legs, arms, and hands
+- Leg length relative to torso MUST be preserved exactly — do NOT shorten or compress legs
+- Body height to width ratio must remain constant — do NOT compress vertical or horizontal proportions
+- Human figures must occupy the SAME visual space (approximately ${bodyHeightEstimate} of image height) as in the original
+- Ensure limb lengths and reach are identical to the original
+- The human silhouette and pose must be pixel-perfect identical
+- Each body segment (head, shoulders, torso, hips, legs, feet) must maintain the exact same visual weight and proportion`;
+
+      const forbiddenDistortions = isChangingHuman
+        ? `FORBIDDEN DISTORTIONS (even when modifying human):
+- Do NOT compress, squeeze, or condense the figure unnaturally
+- Do NOT introduce anatomical impossibilities
+- Do NOT make proportions look "wrong" or unrealistic
+- Maintain believable human anatomy even with requested modifications`
+        : `FORBIDDEN DISTORTIONS (CRITICAL - WILL FAIL QUALITY CHECK):
+- Do NOT compress, squeeze, or condense any human figures
+- Do NOT shorten limbs, legs, arms, or extremities
+- Do NOT increase head size relative to body
+- Do NOT flatten or compress vertical proportions of any character
+- Do NOT make figures appear "squatter" than the original
+- Any visible change to human body proportions is a CRITICAL ERROR
+- Do NOT reduce the apparent height or vertical extent of figures`;
 
       const fullPrompt = `Edit this image precisely according to the instruction below. This is for a professional production asset.
 
@@ -1169,30 +1205,16 @@ IMAGE SPECIFICATIONS:
 CRITICAL RULES:
 - Maintain the EXACT same art style, illustration style, line weight, and color palette as the original image.
 - Maintain the EXACT same aspect ratio and proportions of the original image — do NOT crop, stretch, or compress the content.
-- Keep the main subject (character, object, etc.) at the EXACT same scale and size — do NOT resize, shrink, or condense it.
+- Keep the main subject (character, object, etc.) at the EXACT same scale and size — do NOT resize, shrink, or condense it (unless specifically asked to change size).
 
-HUMAN FIGURE PRESERVATION (ABSOLUTE REQUIREMENT):
-- PRESERVE EXACT BODY PROPORTIONS: Every human figure must maintain identical proportions for head, torso, legs, arms, and hands
-- Leg length relative to torso MUST be preserved exactly — do NOT shorten or compress legs
-- Body height to width ratio must remain constant — do NOT compress vertical or horizontal proportions
-- Human figures must occupy the SAME visual space (approximately ${bodyHeightEstimate} of image height) as in the original
-- Ensure limb lengths and reach are identical to the original
-- The human silhouette and pose must be pixel-perfect identical
-- Each body segment (head, shoulders, torso, hips, legs, feet) must maintain the exact same visual weight and proportion
+${proportionRules}
 
 SPATIAL PRESERVATION:
 - Do NOT add extra content, space, or elements on the sides or edges to fill the frame
 - Keep the exact same framing and composition as the original
-- Do NOT reposition or resize the main subject
+- Do NOT reposition or resize the main subject (unless the change specifically requires it)
 
-FORBIDDEN DISTORTIONS (CRITICAL - WILL FAIL QUALITY CHECK):
-- Do NOT compress, squeeze, or condense any human figures
-- Do NOT shorten limbs, legs, arms, or extremities
-- Do NOT increase head size relative to body
-- Do NOT flatten or compress vertical proportions of any character
-- Do NOT make figures appear "squatter" than the original
-- Any visible change to human body proportions is a CRITICAL ERROR
-- Do NOT reduce the apparent height or vertical extent of figures
+${forbiddenDistortions}
 
 OTHER RULES:
 - Only modify what is explicitly requested — everything else must remain pixel-perfect identical
