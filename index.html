@@ -756,10 +756,9 @@
       <h2>📋 What's New</h2>
       <div style="max-height: 400px; overflow-y: auto; font-size: 13px; color: var(--text-dim); line-height: 1.6;">
         <div style="margin-bottom: 16px;">
-          <div style="color: var(--accent); font-weight: 600; margin-bottom: 6px;">v1.1.1 — Aspect Ratio Fix</div>
+          <div style="color: var(--accent); font-weight: 600; margin-bottom: 6px;">v1.1.1 — Improved Resizing</div>
           <ul style="margin-left: 16px;">
-            <li>Fixed image condensing when generated output has different aspect ratio</li>
-            <li>Now preserves aspect ratio with letterboxing instead of distorting content</li>
+            <li>Reverted to clean image scaling without white letterboxing</li>
           </ul>
         </div>
         <div style="margin-bottom: 16px;">
@@ -1370,7 +1369,7 @@ Requested change: ${prompt}`;
         src = next;
       }
 
-      // Final resize to exact target, preserving aspect ratio
+      // Final resize to exact target dimensions
       const final = document.createElement('canvas');
       final.width = targetW;
       final.height = targetH;
@@ -1378,31 +1377,8 @@ Requested change: ${prompt}`;
       ctx.imageSmoothingEnabled = true;
       ctx.imageSmoothingQuality = 'high';
 
-      // Calculate dimensions preserving aspect ratio
-      const srcAspect = src.width / src.height;
-      const targetAspect = targetW / targetH;
-      let drawW, drawH, drawX, drawY;
-
-      if (srcAspect > targetAspect) {
-        // Source is wider, fit to target width
-        drawW = targetW;
-        drawH = Math.round(targetW / srcAspect);
-      } else {
-        // Source is taller, fit to target height
-        drawH = targetH;
-        drawW = Math.round(targetH * srcAspect);
-      }
-
-      // Center the image
-      drawX = (targetW - drawW) / 2;
-      drawY = (targetH - drawH) / 2;
-
-      // Clear with transparent/white background
-      ctx.fillStyle = '#ffffff';
-      ctx.fillRect(0, 0, targetW, targetH);
-
-      // Draw the image centered
-      ctx.drawImage(src, drawX, drawY, drawW, drawH);
+      // Draw the image stretched to exact target size
+      ctx.drawImage(src, 0, 0, targetW, targetH);
       return final;
     }
 
