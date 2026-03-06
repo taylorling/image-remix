@@ -574,19 +574,6 @@
     .toast.error { border-color: var(--danger); }
     .toast.success { border-color: var(--success); }
 
-    /* Compare slider */
-    .compare-toggle {
-      margin-top: 12px;
-      display: none;
-      align-items: center;
-      gap: 8px;
-      font-size: 12px;
-      color: var(--text-dim);
-    }
-
-    .compare-toggle.visible { display: flex; }
-
-    .compare-toggle label { cursor: pointer; }
 
     /* Iteration */
     .iterate-section {
@@ -700,12 +687,6 @@
 
       <div class="output-metadata" id="outputMetadata"></div>
 
-      <div class="compare-toggle" id="compareToggle">
-        <label>
-          <input type="checkbox" id="compareCheckbox"> Side-by-side comparison
-        </label>
-      </div>
-
       <div class="iterate-section" id="iterateSection">
         <div class="prompt-label">Iterate on this result</div>
         <textarea
@@ -783,7 +764,6 @@
     const iterateSection = $('#iterateSection');
     const iterateInput = $('#iterateInput');
     const iterateBtn = $('#iterateBtn');
-    const compareToggle = $('#compareToggle');
 
     // =========================================================================
     // Toast
@@ -885,7 +865,6 @@
       outputMetadata.innerHTML = '';
       downloadBtn.classList.remove('visible');
       iterateSection.classList.remove('visible');
-      compareToggle.classList.remove('visible');
       outputWrap.classList.remove('has-transparency');
     }
 
@@ -1065,7 +1044,6 @@
 
         downloadBtn.classList.add('visible');
         iterateSection.classList.add('visible');
-        compareToggle.classList.add('visible');
         toast('Image generated successfully!', 'success');
 
       } catch (err) {
