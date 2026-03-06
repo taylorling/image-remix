@@ -1363,14 +1363,39 @@ Requested change: ${prompt}`;
         src = next;
       }
 
-      // Final resize to exact target
+      // Final resize to exact target, preserving aspect ratio
       const final = document.createElement('canvas');
       final.width = targetW;
       final.height = targetH;
       const ctx = final.getContext('2d');
       ctx.imageSmoothingEnabled = true;
       ctx.imageSmoothingQuality = 'high';
-      ctx.drawImage(src, 0, 0, targetW, targetH);
+
+      // Calculate dimensions preserving aspect ratio
+      const srcAspect = src.width / src.height;
+      const targetAspect = targetW / targetH;
+      let drawW, drawH, drawX, drawY;
+
+      if (srcAspect > targetAspect) {
+        // Source is wider, fit to target width
+        drawW = targetW;
+        drawH = Math.round(targetW / srcAspect);
+      } else {
+        // Source is taller, fit to target height
+        drawH = targetH;
+        drawW = Math.round(targetH * srcAspect);
+      }
+
+      // Center the image
+      drawX = (targetW - drawW) / 2;
+      drawY = (targetH - drawH) / 2;
+
+      // Clear with transparent/white background
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, targetW, targetH);
+
+      // Draw the image centered
+      ctx.drawImage(src, drawX, drawY, drawW, drawH);
       return final;
     }
 
