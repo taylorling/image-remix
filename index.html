@@ -641,7 +641,7 @@
     <div>
       <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 4px;">
         <h1><span>🎨</span> Image Remix</h1>
-        <span class="version-badge">v1.1.1</span>
+        <span class="version-badge">v1.0.0</span>
         <button class="info-btn" id="infoBtn" title="View changelog">ℹ️</button>
       </div>
       <div class="subtitle">Drop an image, describe changes, get a production-ready asset</div>
@@ -754,33 +754,7 @@
   <div class="modal-backdrop" id="changelogBackdrop">
     <div class="modal" style="max-width: 500px;">
       <h2>📋 What's New</h2>
-      <div style="max-height: 400px; overflow-y: auto; font-size: 13px; color: var(--text-dim); line-height: 1.6;">
-        <div style="margin-bottom: 16px;">
-          <div style="color: var(--accent); font-weight: 600; margin-bottom: 6px;">v1.1.1 — Improved Resizing</div>
-          <ul style="margin-left: 16px;">
-            <li>Reverted to clean image scaling without white letterboxing</li>
-          </ul>
-        </div>
-        <div style="margin-bottom: 16px;">
-          <div style="color: var(--accent); font-weight: 600; margin-bottom: 6px;">v1.1.0 — Quality Improvements</div>
-          <ul style="margin-left: 16px;">
-            <li>Added aspect ratio preservation to prevent image compression</li>
-            <li>Added rules to maintain subject scale and prevent condensing</li>
-            <li>Added rules to prevent adding extra content on sides</li>
-            <li>Removed unused compare side-by-side checkbox</li>
-          </ul>
-        </div>
-        <div style="margin-bottom: 16px;">
-          <div style="color: var(--accent); font-weight: 600; margin-bottom: 6px;">v1.0.0 — Initial Release</div>
-          <ul style="margin-left: 16px;">
-            <li>Image upload and preview with metadata</li>
-            <li>Gemini AI-powered image editing</li>
-            <li>Resolution matching and quality optimization</li>
-            <li>Iteration capability on generated images</li>
-            <li>Production-ready asset download</li>
-          </ul>
-        </div>
-      </div>
+      <div style="max-height: 400px; overflow-y: auto; font-size: 13px; color: var(--text-dim); line-height: 1.6;" data-changelog></div>
       <div class="modal-actions">
         <button class="btn-cancel" id="changelogCancel">Close</button>
       </div>
@@ -791,6 +765,32 @@
   <div class="toast" id="toast"></div>
 
   <script>
+    // =========================================================================
+    // Version & Changelog Configuration
+    // =========================================================================
+    const VERSION = '1.1.1';
+    const CHANGELOG = [
+      { version: '1.1.1', title: 'Improved Resizing', changes: ['Reverted to clean image scaling without white letterboxing'] },
+      { version: '1.1.0', title: 'Quality Improvements', changes: ['Added aspect ratio preservation to prevent image compression', 'Added rules to maintain subject scale and prevent condensing', 'Added rules to prevent adding extra content on sides', 'Removed unused compare side-by-side checkbox'] },
+      { version: '1.0.0', title: 'Initial Release', changes: ['Image upload and preview with metadata', 'Gemini AI-powered image editing', 'Resolution matching and quality optimization', 'Iteration capability on generated images', 'Production-ready asset download'] },
+    ];
+
+    // Update version badge and changelog on page load
+    document.addEventListener('DOMContentLoaded', () => {
+      document.querySelector('.version-badge').textContent = `v${VERSION}`;
+      const changelogContainer = document.querySelector('[data-changelog]');
+      if (changelogContainer) {
+        changelogContainer.innerHTML = CHANGELOG.map(entry => `
+          <div style="margin-bottom: 16px;">
+            <div style="color: var(--accent); font-weight: 600; margin-bottom: 6px;">v${entry.version} — ${entry.title}</div>
+            <ul style="margin-left: 16px;">
+              ${entry.changes.map(change => `<li>${change}</li>`).join('')}
+            </ul>
+          </div>
+        `).join('');
+      }
+    });
+
     // =========================================================================
     // State
     // =========================================================================
