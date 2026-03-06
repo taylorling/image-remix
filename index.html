@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src https://generativelanguage.googleapis.com; worker-src blob:;">
   <title>Image Remix — Growth Experiment Tool</title>
   <meta name="description" content="Drop an image, describe your changes, get a production-ready asset instantly.">
   <meta name="theme-color" content="#0f0f0f">
@@ -795,11 +796,13 @@
     // State
     // =========================================================================
     const state = {
-      apiKey: localStorage.getItem('gemini_api_key') || '',
+      apiKey: sessionStorage.getItem('gemini_api_key') || '',
       sourceImage: null,       // { file, dataUrl, width, height, format, hasTransparency, mimeType }
       outputImage: null,       // { dataUrl, blob }
       isGenerating: false,
+      lastGeneratedAt: 0,      // timestamp for rate limiting
     };
+    const RATE_LIMIT_MS = 3000; // min 3s between requests
 
     // =========================================================================
     // DOM References
@@ -877,7 +880,7 @@
         return;
       }
       state.apiKey = key;
-      localStorage.setItem('gemini_api_key', key);
+      sessionStorage.setItem('gemini_api_key', key);
       updateApiKeyUI();
       modalBackdrop.classList.remove('open');
       toast('API key saved', 'success');
@@ -1015,14 +1018,25 @@
       return false;
     }
 
+    function makeBadge(dotClass, text) {
+      const badge = document.createElement('div');
+      badge.className = 'badge';
+      if (dotClass) {
+        const dot = document.createElement('span');
+        dot.className = `dot ${dotClass}`;
+        badge.appendChild(dot);
+      }
+      badge.appendChild(document.createTextNode(text));
+      return badge;
+    }
+
     function renderMetadata() {
       const s = state.sourceImage;
-      metadataEl.innerHTML = `
-        <div class="badge"><span class="dot blue"></span>${s.width} × ${s.height}px</div>
-        <div class="badge"><span class="dot green"></span>${s.format}</div>
-        <div class="badge"><span class="dot ${s.hasTransparency ? 'yellow' : 'green'}"></span>${s.hasTransparency ? 'Has transparency' : 'No transparency'}</div>
-        <div class="badge">${(s.file.size / 1024).toFixed(1)} KB</div>
-      `;
+      metadataEl.textContent = '';
+      metadataEl.appendChild(makeBadge('blue', `${s.width} × ${s.height}px`));
+      metadataEl.appendChild(makeBadge('green', s.format));
+      metadataEl.appendChild(makeBadge(s.hasTransparency ? 'yellow' : 'green', s.hasTransparency ? 'Has transparency' : 'No transparency'));
+      metadataEl.appendChild(makeBadge(null, `${(s.file.size / 1024).toFixed(1)} KB`));
     }
 
     // =========================================================================
@@ -1060,6 +1074,12 @@
       if (!state.apiKey) { toast('Set your Gemini API key first', 'error'); return; }
       if (!state.sourceImage) { toast('Upload an image first', 'error'); return; }
       if (!prompt) { toast('Enter a prompt describing the changes', 'error'); return; }
+      const now = Date.now();
+      if (now - state.lastGeneratedAt < RATE_LIMIT_MS) {
+        const wait = Math.ceil((RATE_LIMIT_MS - (now - state.lastGeneratedAt)) / 1000);
+        toast(`Please wait ${wait}s before generating again`, 'error');
+        return;
+      }
 
       state.isGenerating = true;
       generateBtn.disabled = true;
@@ -1111,19 +1131,16 @@
 
         // Output metadata
         const outImg = await loadImageFromDataUrl(finalDataUrl);
+        const resMatched = outImg.naturalWidth === state.sourceImage.width && outImg.naturalHeight === state.sourceImage.height;
         outputMetadata.style.display = 'flex';
-        outputMetadata.innerHTML = `
-          <div class="badge"><span class="dot blue"></span>${outImg.naturalWidth} × ${outImg.naturalHeight}px</div>
-          <div class="badge"><span class="dot green"></span>${outputFormat === 'image/png' ? 'PNG' : 'JPEG'}</div>
-          <div class="badge"><span class="dot ${state.sourceImage.hasTransparency ? 'yellow' : 'green'}"></span>${state.sourceImage.hasTransparency ? 'Transparency preserved' : 'Solid'}</div>
-          <div class="badge">${(blob.size / 1024).toFixed(1)} KB</div>
-          <div class="badge"><span class="dot ${
-            outImg.naturalWidth === state.sourceImage.width && outImg.naturalHeight === state.sourceImage.height ? 'green' : 'yellow'
-          }"></span>Resolution ${
-            outImg.naturalWidth === state.sourceImage.width && outImg.naturalHeight === state.sourceImage.height ? 'matched ✓' : 'adjusted'
-          }</div>
-        `;
+        outputMetadata.textContent = '';
+        outputMetadata.appendChild(makeBadge('blue', `${outImg.naturalWidth} × ${outImg.naturalHeight}px`));
+        outputMetadata.appendChild(makeBadge('green', outputFormat === 'image/png' ? 'PNG' : 'JPEG'));
+        outputMetadata.appendChild(makeBadge(state.sourceImage.hasTransparency ? 'yellow' : 'green', state.sourceImage.hasTransparency ? 'Transparency preserved' : 'Solid'));
+        outputMetadata.appendChild(makeBadge(null, `${(blob.size / 1024).toFixed(1)} KB`));
+        outputMetadata.appendChild(makeBadge(resMatched ? 'green' : 'yellow', `Resolution ${resMatched ? 'matched ✓' : 'adjusted'}`));
 
+        state.lastGeneratedAt = Date.now();
         downloadBtn.classList.add('visible');
         iterateSection.classList.add('visible');
         toast('Image generated successfully!', 'success');
@@ -1255,11 +1272,14 @@ Requested change: ${prompt}`;
       };
 
       const model = 'gemini-3-pro-image-preview';
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${state.apiKey}`;
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
 
       const response = await fetch(url, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'x-goog-api-key': state.apiKey,
+        },
         body: JSON.stringify(payload),
       });
 
