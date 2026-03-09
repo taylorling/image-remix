@@ -3,185 +3,341 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Image Remix — Growth Experiment Tool</title>
+  <title>Image Remix — AI Asset Generator</title>
   <meta name="description" content="Drop an image, describe your changes, get a production-ready asset instantly.">
-  <meta name="theme-color" content="#0f0f0f">
+  <meta name="theme-color" content="#070709">
   <link rel="manifest" href="manifest.json">
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎨</text></svg>">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect x='5' y='5' width='90' height='90' rx='18' fill='%23e8a535'/><text y='.85em' font-size='62' x='16' fill='%23070709' font-weight='900' font-family='sans-serif'>R</text></svg>">
   <link rel="apple-touch-icon" href="icon-192.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=Manrope:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     :root {
-      --bg: #0f0f0f;
-      --surface: #1a1a1a;
-      --surface-2: #242424;
-      --border: #333;
-      --border-hover: #555;
-      --text: #e8e8e8;
-      --text-dim: #888;
-      --accent: #6c5ce7;
-      --accent-hover: #7d6ff0;
-      --accent-glow: rgba(108, 92, 231, 0.3);
-      --success: #00b894;
-      --warning: #fdcb6e;
-      --danger: #e17055;
-      --radius: 12px;
-      --radius-sm: 8px;
+      --bg: #070709;
+      --surface: #0e0e18;
+      --surface-2: #141426;
+      --surface-3: #1c1c34;
+      --border: rgba(255, 255, 255, 0.065);
+      --border-hover: rgba(255, 255, 255, 0.13);
+      --text: #edeae4;
+      --text-dim: #58546a;
+      --text-mid: #918da6;
+      --accent: #e8a535;
+      --accent-hover: #f0b848;
+      --accent-dim: rgba(232, 165, 53, 0.1);
+      --accent-glow: rgba(232, 165, 53, 0.22);
+      --success: #22c77a;
+      --success-dim: rgba(34, 199, 122, 0.1);
+      --success-border: rgba(34, 199, 122, 0.3);
+      --warning: #f0c040;
+      --danger: #f05a5a;
+      --radius: 16px;
+      --radius-sm: 10px;
+      --radius-xs: 6px;
+      --font-display: 'Syne', sans-serif;
+      --font-body: 'Manrope', sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
     }
 
     body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', Roboto, sans-serif;
+      font-family: var(--font-body);
       background: var(--bg);
       color: var(--text);
       min-height: 100vh;
       line-height: 1.5;
+      font-size: 15px;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
     }
 
-    /* Header */
+    /* Ambient radial glow at the top */
+    body::before {
+      content: '';
+      position: fixed;
+      top: -180px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 900px;
+      height: 420px;
+      background: radial-gradient(ellipse, rgba(232, 165, 53, 0.045) 0%, transparent 68%);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* =========================================================
+       HEADER
+    ========================================================= */
     .header {
-      padding: 20px 24px;
-      border-bottom: 1px solid var(--border);
+      padding: 18px 32px;
       display: flex;
       align-items: center;
       justify-content: space-between;
+      border-bottom: 1px solid var(--border);
+      background: rgba(7, 7, 9, 0.85);
+      backdrop-filter: blur(24px);
+      -webkit-backdrop-filter: blur(24px);
+      position: sticky;
+      top: 0;
+      z-index: 50;
     }
 
-    .header h1 {
-      font-size: 20px;
-      font-weight: 600;
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .brand {
       display: flex;
       align-items: center;
       gap: 10px;
     }
 
-    .header h1 span { font-size: 24px; }
+    .brand-gem {
+      width: 30px;
+      height: 30px;
+      background: var(--accent);
+      border-radius: 7px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
 
-    .header .subtitle {
-      font-size: 13px;
+    .brand-gem svg {
+      width: 16px;
+      height: 16px;
+      color: #070709;
+    }
+
+    .brand-wordmark {
+      font-family: var(--font-display);
+      font-size: 17px;
+      font-weight: 800;
+      color: var(--text);
+      letter-spacing: -0.4px;
+    }
+
+    .header-pills {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+    }
+
+    .version-badge {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      padding: 3px 9px;
+      border-radius: 20px;
       color: var(--text-dim);
+      letter-spacing: 0.3px;
+    }
+
+    .info-btn {
+      background: transparent;
+      border: 1px solid var(--border);
+      width: 26px;
+      height: 26px;
+      border-radius: 50%;
+      cursor: pointer;
+      color: var(--text-dim);
+      transition: all 0.2s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+      font-family: var(--font-mono);
+      font-weight: 500;
+      line-height: 1;
+    }
+
+    .info-btn:hover {
+      border-color: var(--accent);
+      color: var(--accent);
     }
 
     .api-key-btn {
       background: var(--surface-2);
       border: 1px solid var(--border);
-      color: var(--text-dim);
-      padding: 8px 14px;
+      color: var(--text-mid);
+      padding: 8px 16px;
       border-radius: var(--radius-sm);
       cursor: pointer;
       font-size: 13px;
-      transition: all 0.2s;
-    }
-
-    .api-key-btn:hover { border-color: var(--border-hover); color: var(--text); }
-    .api-key-btn.has-key { border-color: var(--success); color: var(--success); }
-
-    .version-badge {
-      font-size: 11px;
-      background: var(--surface-2);
-      border: 1px solid var(--border);
-      padding: 2px 8px;
-      border-radius: 12px;
-      color: var(--text-dim);
+      font-family: var(--font-body);
       font-weight: 500;
+      transition: all 0.2s;
+      letter-spacing: 0.1px;
     }
 
-    .info-btn {
-      background: none;
-      border: none;
-      font-size: 18px;
-      cursor: pointer;
-      padding: 0;
-      color: var(--text-dim);
-      transition: color 0.2s;
-      display: flex;
-      align-items: center;
-      justify-content: center;
+    .api-key-btn:hover {
+      border-color: var(--border-hover);
+      color: var(--text);
     }
 
-    .info-btn:hover { color: var(--accent); }
+    .api-key-btn.has-key {
+      border-color: var(--success-border);
+      color: var(--success);
+      background: var(--success-dim);
+    }
 
-    /* Main Layout */
+    /* =========================================================
+       MAIN LAYOUT
+    ========================================================= */
     .main {
-      max-width: 1200px;
+      max-width: 1280px;
       margin: 0 auto;
-      padding: 24px;
+      padding: 28px 32px;
       display: grid;
       grid-template-columns: 1fr 1fr;
-      gap: 24px;
-      min-height: calc(100vh - 80px);
+      gap: 20px;
+      min-height: calc(100vh - 68px);
+      position: relative;
+      z-index: 1;
     }
 
     @media (max-width: 860px) {
-      .main { grid-template-columns: 1fr; }
+      .main {
+        grid-template-columns: 1fr;
+        padding: 20px 16px;
+      }
+      .header {
+        padding: 14px 20px;
+      }
     }
 
+    /* =========================================================
+       PANELS
+    ========================================================= */
     .panel {
       background: var(--surface);
       border: 1px solid var(--border);
       border-radius: var(--radius);
-      padding: 24px;
+      padding: 28px;
       display: flex;
       flex-direction: column;
     }
 
-    .panel-title {
-      font-size: 14px;
-      font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      color: var(--text-dim);
-      margin-bottom: 16px;
+    /* Top accent line on each panel */
+    .panel::before {
+      content: '';
+      display: block;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, var(--accent) 30%, transparent 70%);
+      opacity: 0.2;
+      margin: -28px -28px 24px;
+      border-radius: var(--radius) var(--radius) 0 0;
     }
 
-    /* Drop Zone */
+    .panel-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 20px;
+    }
+
+    .panel-index {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      font-weight: 400;
+      color: var(--text-dim);
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+    }
+
+    .panel-title {
+      font-family: var(--font-display);
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--text-mid);
+      letter-spacing: 0.1px;
+    }
+
+    /* =========================================================
+       DROP ZONE
+    ========================================================= */
     .dropzone {
       flex: 1;
-      border: 2px dashed var(--border);
-      border-radius: var(--radius);
+      border: 1.5px dashed var(--border);
+      border-radius: var(--radius-sm);
       display: flex;
       flex-direction: column;
       align-items: center;
       justify-content: center;
       cursor: pointer;
-      transition: all 0.3s;
-      min-height: 260px;
+      transition: all 0.25s ease;
+      min-height: 264px;
       position: relative;
       overflow: hidden;
+      background: var(--surface-2);
     }
 
-    .dropzone:hover, .dropzone.drag-over {
+    .dropzone:hover,
+    .dropzone.drag-over {
       border-color: var(--accent);
-      background: var(--accent-glow);
+      border-style: solid;
+      background: var(--accent-dim);
+    }
+
+    .dropzone:hover .dz-icon,
+    .dropzone.drag-over .dz-icon {
+      color: var(--accent);
+      transform: translateY(-6px) scale(1.05);
+    }
+
+    .dropzone:hover .dz-text {
+      color: var(--text);
     }
 
     .dropzone.has-image {
       border-style: solid;
       border-color: var(--border);
       cursor: default;
+      background: var(--surface-2);
+    }
+
+    .dropzone.has-image:hover {
+      border-color: var(--border);
+      background: var(--surface-2);
+    }
+
+    .dropzone.has-image:hover .dz-icon {
+      transform: none;
+      color: var(--text-dim);
     }
 
     .dropzone-content {
       text-align: center;
-      padding: 20px;
+      padding: 28px 20px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 14px;
     }
 
-    .dropzone-icon {
-      font-size: 48px;
-      margin-bottom: 12px;
-      opacity: 0.7;
-    }
-
-    .dropzone-text {
-      font-size: 15px;
+    .dz-icon {
       color: var(--text-dim);
-      margin-bottom: 4px;
+      transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
     }
 
-    .dropzone-hint {
-      font-size: 12px;
+    .dz-text {
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--text-mid);
+      transition: color 0.2s;
+    }
+
+    .dz-hint {
+      font-family: var(--font-mono);
+      font-size: 10.5px;
       color: var(--text-dim);
-      opacity: 0.6;
+      letter-spacing: 1px;
+      text-transform: uppercase;
     }
 
     .dropzone input[type="file"] { display: none; }
@@ -201,7 +357,7 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      padding: 8px;
+      padding: 14px;
       position: relative;
     }
 
@@ -215,10 +371,10 @@
     /* Checkerboard for transparency */
     .preview-img-wrap.has-transparency {
       background-image:
-        linear-gradient(45deg, #2a2a2a 25%, transparent 25%),
-        linear-gradient(-45deg, #2a2a2a 25%, transparent 25%),
-        linear-gradient(45deg, transparent 75%, #2a2a2a 75%),
-        linear-gradient(-45deg, transparent 75%, #2a2a2a 75%);
+        linear-gradient(45deg, #1c1c2a 25%, transparent 25%),
+        linear-gradient(-45deg, #1c1c2a 25%, transparent 25%),
+        linear-gradient(45deg, transparent 75%, #1c1c2a 75%),
+        linear-gradient(-45deg, transparent 75%, #1c1c2a 75%);
       background-size: 16px 16px;
       background-position: 0 0, 0 8px, 8px -8px, -8px 0px;
       border-radius: 6px;
@@ -228,87 +384,119 @@
       position: absolute;
       top: 12px;
       right: 12px;
-      background: rgba(0,0,0,0.7);
-      border: none;
-      color: white;
+      background: rgba(7, 7, 9, 0.8);
+      border: 1px solid var(--border-hover);
+      color: var(--text-mid);
       width: 28px;
       height: 28px;
       border-radius: 50%;
       cursor: pointer;
-      font-size: 14px;
+      font-size: 11px;
       display: flex;
       align-items: center;
       justify-content: center;
-      transition: background 0.2s;
+      transition: all 0.2s;
       z-index: 2;
+      backdrop-filter: blur(8px);
     }
 
-    .remove-btn:hover { background: var(--danger); }
+    .remove-btn:hover {
+      background: var(--danger);
+      border-color: var(--danger);
+      color: white;
+    }
 
-    /* Metadata badges */
+    /* =========================================================
+       METADATA BADGES
+    ========================================================= */
     .metadata {
       display: flex;
       flex-wrap: wrap;
-      gap: 8px;
-      margin-top: 16px;
+      gap: 6px;
+      margin-top: 14px;
     }
 
     .badge {
-      background: var(--surface-2);
+      background: var(--surface-3);
       border: 1px solid var(--border);
       padding: 4px 10px;
       border-radius: 20px;
-      font-size: 12px;
-      font-weight: 500;
+      font-family: var(--font-mono);
+      font-size: 10.5px;
+      font-weight: 400;
       display: flex;
       align-items: center;
       gap: 5px;
+      color: var(--text-mid);
     }
 
     .badge .dot {
-      width: 6px;
-      height: 6px;
+      width: 5px;
+      height: 5px;
       border-radius: 50%;
       display: inline-block;
+      flex-shrink: 0;
     }
 
     .badge .dot.green { background: var(--success); }
     .badge .dot.yellow { background: var(--warning); }
     .badge .dot.blue { background: #74b9ff; }
 
-    /* Prompt Area */
+    /* =========================================================
+       PROMPT AREA
+    ========================================================= */
     .prompt-section {
       margin-top: 20px;
     }
 
-    .prompt-label {
-      font-size: 13px;
+    .field-label {
+      font-family: var(--font-mono);
+      font-size: 10px;
       font-weight: 500;
       color: var(--text-dim);
-      margin-bottom: 8px;
+      text-transform: uppercase;
+      letter-spacing: 1.2px;
+      margin-bottom: 9px;
+      display: block;
+    }
+
+    /* Keep original selector name for JS compatibility */
+    .prompt-label {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      font-weight: 500;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      letter-spacing: 1.2px;
+      margin-bottom: 9px;
+      display: block;
     }
 
     .prompt-textarea {
       width: 100%;
       background: var(--surface-2);
-      border: 1px solid var(--border);
+      border: 1.5px solid var(--border);
       border-radius: var(--radius-sm);
       color: var(--text);
-      padding: 14px;
+      padding: 14px 16px;
       font-size: 14px;
-      font-family: inherit;
+      font-family: var(--font-body);
+      font-weight: 400;
       resize: vertical;
       min-height: 100px;
       transition: border-color 0.2s;
-      line-height: 1.5;
+      line-height: 1.65;
     }
 
     .prompt-textarea:focus {
       outline: none;
-      border-color: var(--accent);
+      border-color: rgba(232, 165, 53, 0.4);
     }
 
-    .prompt-textarea::placeholder { color: var(--text-dim); opacity: 0.5; }
+    .prompt-textarea::placeholder {
+      color: var(--text-dim);
+      opacity: 0.7;
+    }
 
     .prompt-suggestions {
       display: flex;
@@ -318,75 +506,105 @@
     }
 
     .suggestion-chip {
-      background: var(--surface-2);
+      background: var(--surface-3);
       border: 1px solid var(--border);
       color: var(--text-dim);
-      padding: 4px 12px;
+      padding: 5px 12px;
       border-radius: 20px;
       font-size: 12px;
+      font-weight: 500;
       cursor: pointer;
-      transition: all 0.2s;
+      transition: all 0.18s;
+      font-family: var(--font-body);
+      letter-spacing: 0.1px;
     }
 
     .suggestion-chip:hover {
-      border-color: var(--accent);
-      color: var(--text);
+      border-color: rgba(232, 165, 53, 0.38);
+      color: var(--accent);
+      background: var(--accent-dim);
     }
 
-    /* Generate Button */
+    /* =========================================================
+       GENERATE BUTTON
+    ========================================================= */
     .generate-btn {
       margin-top: 20px;
       width: 100%;
       background: var(--accent);
-      color: white;
+      color: #07060a;
       border: none;
-      padding: 14px 24px;
+      padding: 15px 24px;
       border-radius: var(--radius-sm);
-      font-size: 15px;
-      font-weight: 600;
+      font-size: 14px;
+      font-weight: 700;
+      font-family: var(--font-display);
       cursor: pointer;
       transition: all 0.2s;
       display: flex;
       align-items: center;
       justify-content: center;
       gap: 8px;
+      letter-spacing: 0.2px;
     }
 
     .generate-btn:hover:not(:disabled) {
       background: var(--accent-hover);
-      box-shadow: 0 0 20px var(--accent-glow);
+      box-shadow: 0 0 32px var(--accent-glow), 0 6px 20px rgba(0, 0, 0, 0.3);
+      transform: translateY(-1px);
+    }
+
+    .generate-btn:active:not(:disabled) {
+      transform: translateY(0);
+      box-shadow: 0 0 16px var(--accent-glow);
     }
 
     .generate-btn:disabled {
-      opacity: 0.4;
+      opacity: 0.28;
       cursor: not-allowed;
+      transform: none;
     }
 
-    /* Output Panel */
+    /* =========================================================
+       OUTPUT PANEL
+    ========================================================= */
     .output-area {
       flex: 1;
       display: flex;
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      border: 2px dashed var(--border);
-      border-radius: var(--radius);
-      min-height: 260px;
+      border: 1.5px dashed var(--border);
+      border-radius: var(--radius-sm);
+      min-height: 264px;
       position: relative;
+      background: var(--surface-2);
+      overflow: hidden;
     }
 
     .output-area.has-result {
       border-style: solid;
-      border-color: var(--success);
+      border-color: var(--success-border);
+      background: var(--surface-2);
     }
 
     .output-placeholder {
       text-align: center;
-      color: var(--text-dim);
-      opacity: 0.5;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 14px;
+      padding: 28px 20px;
     }
 
-    .output-placeholder .icon { font-size: 40px; margin-bottom: 8px; }
+    .output-placeholder-text {
+      font-size: 13px;
+      color: var(--text-dim);
+      font-weight: 400;
+    }
+
+    /* Legacy selector compatibility */
+    .output-placeholder .icon { display: none; }
 
     .output-img-wrap {
       display: none;
@@ -395,7 +613,7 @@
       flex: 1;
       align-items: center;
       justify-content: center;
-      padding: 8px;
+      padding: 14px;
       position: relative;
     }
 
@@ -411,10 +629,10 @@
 
     .output-img-wrap.has-transparency {
       background-image:
-        linear-gradient(45deg, #2a2a2a 25%, transparent 25%),
-        linear-gradient(-45deg, #2a2a2a 25%, transparent 25%),
-        linear-gradient(45deg, transparent 75%, #2a2a2a 75%),
-        linear-gradient(-45deg, transparent 75%, #2a2a2a 75%);
+        linear-gradient(45deg, #1c1c2a 25%, transparent 25%),
+        linear-gradient(-45deg, #1c1c2a 25%, transparent 25%),
+        linear-gradient(45deg, transparent 75%, #1c1c2a 75%),
+        linear-gradient(-45deg, transparent 75%, #1c1c2a 75%);
       background-size: 16px 16px;
       background-position: 0 0, 0 8px, 8px -8px, -8px 0px;
       border-radius: 6px;
@@ -423,172 +641,229 @@
     .output-metadata {
       display: none;
       flex-wrap: wrap;
-      gap: 8px;
-      margin-top: 16px;
+      gap: 6px;
+      margin-top: 14px;
     }
 
     .output-area.has-result ~ .output-metadata { display: flex; }
 
-    /* Download Button */
+    /* =========================================================
+       DOWNLOAD BUTTON
+    ========================================================= */
     .download-btn {
-      margin-top: 20px;
+      margin-top: 16px;
       width: 100%;
-      background: var(--success);
-      color: white;
-      border: none;
-      padding: 14px 24px;
+      background: var(--success-dim);
+      color: var(--success);
+      border: 1px solid var(--success-border);
+      padding: 13px 24px;
       border-radius: var(--radius-sm);
-      font-size: 15px;
+      font-size: 14px;
       font-weight: 600;
+      font-family: var(--font-body);
       cursor: pointer;
       transition: all 0.2s;
       display: none;
       align-items: center;
       justify-content: center;
       gap: 8px;
+      letter-spacing: 0.1px;
     }
 
-    .download-btn:hover { filter: brightness(1.1); }
+    .download-btn:hover {
+      background: rgba(34, 199, 122, 0.17);
+      border-color: rgba(34, 199, 122, 0.5);
+      box-shadow: 0 0 20px rgba(34, 199, 122, 0.1);
+    }
+
     .download-btn.visible { display: flex; }
 
-    /* Loading / Progress */
+    /* =========================================================
+       LOADING STATE
+    ========================================================= */
     .loading-overlay {
       position: absolute;
       inset: 0;
-      background: rgba(15, 15, 15, 0.85);
+      background: rgba(7, 7, 9, 0.88);
       display: none;
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      border-radius: var(--radius);
+      border-radius: var(--radius-sm);
       z-index: 10;
+      backdrop-filter: blur(6px);
     }
 
     .loading-overlay.active { display: flex; }
 
     .spinner {
-      width: 40px;
-      height: 40px;
-      border: 3px solid var(--border);
-      border-top-color: var(--accent);
+      width: 38px;
+      height: 38px;
       border-radius: 50%;
-      animation: spin 0.8s linear infinite;
+      border: 2px solid var(--surface-3);
+      border-top-color: var(--accent);
+      animation: spin 0.75s linear infinite;
+      position: relative;
+    }
+
+    .spinner::after {
+      content: '';
+      position: absolute;
+      inset: 5px;
+      border-radius: 50%;
+      border: 1.5px solid transparent;
+      border-top-color: rgba(232, 165, 53, 0.28);
+      animation: spin 1.5s linear infinite reverse;
     }
 
     @keyframes spin { to { transform: rotate(360deg); } }
 
     .loading-text {
-      margin-top: 14px;
+      margin-top: 18px;
       font-size: 13px;
-      color: var(--text-dim);
+      font-weight: 500;
+      color: var(--text-mid);
+      letter-spacing: 0.1px;
     }
 
     .step-indicator {
-      margin-top: 8px;
-      font-size: 11px;
+      margin-top: 6px;
+      font-family: var(--font-mono);
+      font-size: 10px;
       color: var(--text-dim);
-      opacity: 0.7;
+      letter-spacing: 0.5px;
     }
 
-    /* API Key Modal */
+    /* =========================================================
+       MODALS
+    ========================================================= */
     .modal-backdrop {
       position: fixed;
       inset: 0;
-      background: rgba(0,0,0,0.7);
+      background: rgba(7, 7, 9, 0.72);
       display: none;
       align-items: center;
       justify-content: center;
       z-index: 100;
-      backdrop-filter: blur(4px);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
     }
 
     .modal-backdrop.open { display: flex; }
 
     .modal {
       background: var(--surface);
-      border: 1px solid var(--border);
+      border: 1px solid var(--border-hover);
       border-radius: var(--radius);
-      padding: 28px;
-      width: 420px;
+      padding: 32px;
+      width: 440px;
       max-width: 90vw;
+      box-shadow:
+        0 28px 70px rgba(0, 0, 0, 0.65),
+        0 0 0 1px rgba(255, 255, 255, 0.04),
+        inset 0 1px 0 rgba(255, 255, 255, 0.06);
+      animation: modal-in 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    @keyframes modal-in {
+      from { opacity: 0; transform: scale(0.96) translateY(8px); }
+      to   { opacity: 1; transform: scale(1)    translateY(0); }
     }
 
     .modal h2 {
-      font-size: 18px;
-      margin-bottom: 8px;
+      font-family: var(--font-display);
+      font-size: 20px;
+      font-weight: 700;
+      margin-bottom: 10px;
+      color: var(--text);
+      letter-spacing: -0.4px;
     }
 
     .modal p {
       font-size: 13px;
-      color: var(--text-dim);
-      margin-bottom: 18px;
-      line-height: 1.5;
+      color: var(--text-mid);
+      margin-bottom: 20px;
+      line-height: 1.65;
     }
 
     .modal input[type="password"],
     .modal input[type="text"] {
       width: 100%;
       background: var(--surface-2);
-      border: 1px solid var(--border);
+      border: 1.5px solid var(--border);
       border-radius: var(--radius-sm);
       color: var(--text);
-      padding: 12px 14px;
-      font-size: 14px;
-      font-family: monospace;
+      padding: 12px 16px;
+      font-size: 13px;
+      font-family: var(--font-mono);
+      letter-spacing: 0.5px;
+      transition: border-color 0.2s;
     }
 
     .modal input:focus {
       outline: none;
-      border-color: var(--accent);
+      border-color: rgba(232, 165, 53, 0.42);
     }
 
     .modal-actions {
       display: flex;
       gap: 10px;
-      margin-top: 18px;
+      margin-top: 20px;
       justify-content: flex-end;
     }
 
     .modal-actions button {
       padding: 10px 20px;
       border-radius: var(--radius-sm);
-      font-size: 14px;
-      font-weight: 500;
+      font-size: 13px;
+      font-weight: 600;
+      font-family: var(--font-body);
       cursor: pointer;
-      border: 1px solid var(--border);
-      transition: all 0.2s;
+      transition: all 0.18s;
     }
 
     .btn-cancel {
       background: transparent;
       color: var(--text-dim);
+      border: 1px solid var(--border);
     }
 
-    .btn-cancel:hover { color: var(--text); }
+    .btn-cancel:hover {
+      color: var(--text);
+      border-color: var(--border-hover);
+    }
 
     .btn-save {
       background: var(--accent);
-      color: white;
-      border-color: var(--accent) !important;
+      color: #07060a;
+      border: none;
+      font-weight: 700;
     }
 
-    .btn-save:hover { background: var(--accent-hover); }
+    .btn-save:hover {
+      background: var(--accent-hover);
+    }
 
-    /* Toast */
+    /* =========================================================
+       TOAST
+    ========================================================= */
     .toast {
       position: fixed;
-      bottom: 24px;
-      right: 24px;
-      background: var(--surface);
-      border: 1px solid var(--border);
+      bottom: 28px;
+      right: 28px;
+      background: var(--surface-2);
+      border: 1px solid var(--border-hover);
       border-radius: var(--radius-sm);
       padding: 12px 20px;
       font-size: 13px;
+      font-weight: 500;
+      font-family: var(--font-body);
       z-index: 200;
-      transform: translateY(100px);
+      transform: translateY(16px);
       opacity: 0;
-      transition: all 0.3s;
-      max-width: 360px;
+      transition: all 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+      max-width: 380px;
+      box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45);
     }
 
     .toast.show {
@@ -596,11 +871,19 @@
       opacity: 1;
     }
 
-    .toast.error { border-color: var(--danger); }
-    .toast.success { border-color: var(--success); }
+    .toast.error {
+      border-color: rgba(240, 90, 90, 0.4);
+      color: #f09090;
+    }
 
+    .toast.success {
+      border-color: var(--success-border);
+      color: var(--success);
+    }
 
-    /* Iteration */
+    /* =========================================================
+       ITERATION SECTION
+    ========================================================= */
     .iterate-section {
       display: none;
       margin-top: 16px;
@@ -611,40 +894,92 @@
     .iterate-section.visible { display: block; }
 
     .iterate-section .prompt-textarea {
-      min-height: 60px;
+      min-height: 70px;
     }
 
     .iterate-btn {
       margin-top: 10px;
       width: 100%;
-      background: var(--surface-2);
-      border: 1px solid var(--accent);
+      background: transparent;
+      border: 1.5px solid rgba(232, 165, 53, 0.28);
       color: var(--accent);
-      padding: 10px 20px;
+      padding: 11px 20px;
       border-radius: var(--radius-sm);
-      font-size: 14px;
-      font-weight: 500;
+      font-size: 13px;
+      font-weight: 600;
+      font-family: var(--font-body);
       cursor: pointer;
       transition: all 0.2s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
     }
 
     .iterate-btn:hover {
-      background: var(--accent);
-      color: white;
+      background: var(--accent-dim);
+      border-color: var(--accent);
     }
+
+    /* =========================================================
+       CHANGELOG MODAL CONTENT
+    ========================================================= */
+    .changelog-scroll {
+      max-height: 400px;
+      overflow-y: auto;
+      padding-right: 4px;
+    }
+
+    .changelog-scroll::-webkit-scrollbar { width: 4px; }
+    .changelog-scroll::-webkit-scrollbar-track { background: transparent; }
+    .changelog-scroll::-webkit-scrollbar-thumb { background: var(--surface-3); border-radius: 2px; }
+
+    .changelog-entry {
+      margin-bottom: 22px;
+    }
+
+    .changelog-version {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--accent);
+      font-weight: 500;
+      letter-spacing: 0.4px;
+      margin-bottom: 8px;
+    }
+
+    .changelog-entry ul {
+      margin-left: 16px;
+      font-size: 13px;
+      color: var(--text-mid);
+      line-height: 1.75;
+    }
+
+    /* =========================================================
+       SCROLLBAR
+    ========================================================= */
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--surface-3); border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--border-hover); }
   </style>
 </head>
 <body>
 
   <!-- Header -->
   <header class="header">
-    <div>
-      <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 4px;">
-        <h1><span>🎨</span> Image Remix</h1>
-        <span class="version-badge">v1.1.1</span>
-        <button class="info-btn" id="infoBtn" title="View changelog">ℹ️</button>
+    <div class="header-left">
+      <div class="brand">
+        <div class="brand-gem">
+          <svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M8 2l1.6 4.6H14.2L10 9.4l1.6 4.8L8 11.5 4.4 14.2l1.6-4.8L2 6.6H6.4L8 2z" fill="currentColor"/>
+          </svg>
+        </div>
+        <span class="brand-wordmark">Image Remix</span>
       </div>
-      <div class="subtitle">Drop an image, describe changes, get a production-ready asset</div>
+      <div class="header-pills">
+        <span class="version-badge">v1.1.1</span>
+        <button class="info-btn" id="infoBtn" title="View changelog">?</button>
+      </div>
     </div>
     <button class="api-key-btn" id="apiKeyBtn">🔑 Set API Key</button>
   </header>
@@ -654,13 +989,24 @@
 
     <!-- Left Panel: Input -->
     <div class="panel">
-      <div class="panel-title">Reference Image</div>
+      <div class="panel-row">
+        <span class="panel-index">01 — Source</span>
+        <span class="panel-title">Reference Image</span>
+      </div>
 
       <div class="dropzone" id="dropzone">
         <div class="dropzone-content">
-          <div class="dropzone-icon">📸</div>
-          <div class="dropzone-text">Drop your image here or click to browse</div>
-          <div class="dropzone-hint">PNG, JPEG, WebP supported</div>
+          <div class="dz-icon">
+            <svg width="54" height="54" viewBox="0 0 54 54" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <rect x="7" y="16" width="40" height="30" rx="5" stroke="currentColor" stroke-width="1.5" stroke-opacity="0.45"/>
+              <circle cx="27" cy="31" r="9.5" stroke="currentColor" stroke-width="1.5" stroke-opacity="0.45"/>
+              <circle cx="27" cy="31" r="3.5" fill="currentColor" fill-opacity="0.22"/>
+              <path d="M20 16l3-6h8l3 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-opacity="0.45"/>
+              <path d="M27 4v9M23 9l4-5 4 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </div>
+          <div class="dz-text">Drop image here or click to browse</div>
+          <div class="dz-hint">PNG · JPEG · WebP</div>
         </div>
         <input type="file" id="fileInput" accept="image/png, image/jpeg, image/webp">
         <div class="preview-container">
@@ -674,7 +1020,7 @@
       <div class="metadata" id="metadata"></div>
 
       <div class="prompt-section">
-        <div class="prompt-label">What changes do you want?</div>
+        <div class="prompt-label">Describe your changes</div>
         <textarea
           class="prompt-textarea"
           id="promptInput"
@@ -691,18 +1037,28 @@
       </div>
 
       <button class="generate-btn" id="generateBtn" disabled>
-        <span>✨</span> Generate Remix
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+          <path d="M7 1.5l1.4 4.1H13L9.3 8.3l1.4 4.2L7 10.2 3.3 12.5l1.4-4.2L1 5.6h4.6L7 1.5z" fill="currentColor"/>
+        </svg>
+        Generate Remix
       </button>
     </div>
 
     <!-- Right Panel: Output -->
     <div class="panel">
-      <div class="panel-title">Output</div>
+      <div class="panel-row">
+        <span class="panel-index">02 — Output</span>
+        <span class="panel-title">Result</span>
+      </div>
 
       <div class="output-area" id="outputArea">
         <div class="output-placeholder">
-          <div class="icon">🖼️</div>
-          <div>Your remixed image will appear here</div>
+          <svg width="54" height="54" viewBox="0 0 54 54" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <rect x="7" y="10" width="40" height="34" rx="6" stroke="currentColor" stroke-width="1.5" stroke-opacity="0.2" stroke-dasharray="4 2.5"/>
+            <circle cx="27" cy="27" r="8.5" stroke="currentColor" stroke-width="1.5" stroke-opacity="0.18"/>
+            <path d="M27 21v12M21 27h12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-opacity="0.18"/>
+          </svg>
+          <div class="output-placeholder-text">Your remixed image will appear here</div>
         </div>
         <div class="output-img-wrap" id="outputWrap">
           <img id="outputImg" alt="Result">
@@ -723,11 +1079,19 @@
           id="iterateInput"
           placeholder="e.g. Make the hair a bit darker..."
         ></textarea>
-        <button class="iterate-btn" id="iterateBtn">🔄 Regenerate with changes</button>
+        <button class="iterate-btn" id="iterateBtn">
+          <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
+            <path d="M11.5 6.5A5 5 0 112 4M2 2v2.5h2.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          Regenerate with changes
+        </button>
       </div>
 
       <button class="download-btn" id="downloadBtn">
-        <span>⬇️</span> Download Production-Ready Asset
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+          <path d="M7 1v9M3.5 7L7 10.5 10.5 7M1.5 13h11" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        Download Production Asset
       </button>
     </div>
 
@@ -736,11 +1100,12 @@
   <!-- API Key Modal -->
   <div class="modal-backdrop" id="modalBackdrop">
     <div class="modal">
-      <h2>🔑 Gemini API Key</h2>
+      <h2>API Key</h2>
       <p>
-        Enter your Google Gemini API key. Get one free at
-        <a href="https://aistudio.google.com/apikey" target="_blank" style="color: var(--accent);">Google AI Studio</a>.
-        <br>Uses Nano Banana Pro (Gemini 3 Pro Image) for generation. Key is stored locally in your browser only.
+        Enter your Google Gemini API key to enable generation. Get one free at
+        <a href="https://aistudio.google.com/apikey" target="_blank" style="color: var(--accent); text-decoration: none; font-weight: 600;">Google AI Studio</a>.
+        <br><br>
+        Uses Gemini 3 Pro Image for generation. Your key is stored locally in your browser only — never sent to any server.
       </p>
       <input type="password" id="apiKeyInput" placeholder="AIza...">
       <div class="modal-actions">
@@ -753,26 +1118,26 @@
   <!-- Changelog Modal -->
   <div class="modal-backdrop" id="changelogBackdrop">
     <div class="modal" style="max-width: 500px;">
-      <h2>📋 What's New</h2>
-      <div style="max-height: 400px; overflow-y: auto; font-size: 13px; color: var(--text-dim); line-height: 1.6;">
-        <div style="margin-bottom: 16px;">
-          <div style="color: var(--accent); font-weight: 600; margin-bottom: 6px;">v1.1.1 — Improved Resizing</div>
-          <ul style="margin-left: 16px;">
+      <h2>What's New</h2>
+      <div class="changelog-scroll" style="margin-top: 16px;">
+        <div class="changelog-entry">
+          <div class="changelog-version">v1.1.1 — Improved Resizing</div>
+          <ul>
             <li>Reverted to clean image scaling without white letterboxing</li>
           </ul>
         </div>
-        <div style="margin-bottom: 16px;">
-          <div style="color: var(--accent); font-weight: 600; margin-bottom: 6px;">v1.1.0 — Quality Improvements</div>
-          <ul style="margin-left: 16px;">
+        <div class="changelog-entry">
+          <div class="changelog-version">v1.1.0 — Quality Improvements</div>
+          <ul>
             <li>Added aspect ratio preservation to prevent image compression</li>
             <li>Added rules to maintain subject scale and prevent condensing</li>
             <li>Added rules to prevent adding extra content on sides</li>
             <li>Removed unused compare side-by-side checkbox</li>
           </ul>
         </div>
-        <div style="margin-bottom: 16px;">
-          <div style="color: var(--accent); font-weight: 600; margin-bottom: 6px;">v1.0.0 — Initial Release</div>
-          <ul style="margin-left: 16px;">
+        <div class="changelog-entry">
+          <div class="changelog-version">v1.0.0 — Initial Release</div>
+          <ul>
             <li>Image upload and preview with metadata</li>
             <li>Gemini AI-powered image editing</li>
             <li>Resolution matching and quality optimization</li>
