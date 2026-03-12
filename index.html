@@ -1513,12 +1513,8 @@
         // Step 3: Handle transparency
         setStep('Removing background...', '3/4 — Transparency restore');
         if (state.sourceImage.hasTransparency) {
-          // Two-pass transparency restoration:
-          // 1) Chroma key: remove the #00FF00 green background we asked Gemini to use
+          // Remove the #00FF00 chroma green background Gemini placed behind the subject
           chromaKeyRemove(finalCanvas);
-          // 2) Alpha mask: refine with original image's alpha channel as safety net
-          const alphaSource = await loadImageFromDataUrl(state.sourceImage.dataUrl);
-          applyAlphaMask(finalCanvas, alphaSource);
         }
 
         // Step 4: Export in correct format with compression
