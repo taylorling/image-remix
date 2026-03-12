@@ -1934,14 +1934,22 @@ REQUESTED CHANGE: ${prompt}`;
       // Convert canvas to blob for imgly
       const blob = await new Promise(r => canvas.toBlob(r, 'image/png'));
       const resultBlob = await imglyRemoveBackground(blob, {
-        output: { format: 'image/png', quality: 1 },
+        output: { quality: 1, type: 'foreground' },
+        progress: (key, current, total) => {
+          if (total > 0) {
+            const pct = Math.round((current / total) * 100);
+            setStep(`Loading BG-removal model... ${pct}%`, '3/4 — Transparency restore');
+          }
+        },
       });
 
       // Draw result back onto the canvas
-      const img = await loadImageFromDataUrl(URL.createObjectURL(resultBlob));
+      const objUrl = URL.createObjectURL(resultBlob);
+      const img = await loadImageFromDataUrl(objUrl);
       const ctx = canvas.getContext('2d');
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      URL.revokeObjectURL(objUrl);
       return canvas;
     }
 
