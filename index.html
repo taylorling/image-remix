@@ -1006,9 +1006,9 @@
             </svg>
           </div>
           <div class="dz-text">Drop image here or click to browse</div>
-          <div class="dz-hint">PNG · JPEG · WebP</div>
+          <div class="dz-hint">PNG · JPEG · WebP · SVG</div>
         </div>
-        <input type="file" id="fileInput" accept="image/png, image/jpeg, image/webp">
+        <input type="file" id="fileInput" accept="image/png, image/jpeg, image/webp, image/svg+xml">
         <div class="preview-container">
           <div class="preview-img-wrap" id="previewWrap">
             <img id="previewImg" alt="Preview">
@@ -1321,6 +1321,11 @@
     function loadImage(file) {
       resetOutput();
 
+      if (file.type === 'image/svg+xml') {
+        loadSvg(file);
+        return;
+      }
+
       const reader = new FileReader();
       reader.onload = (e) => {
         const dataUrl = e.target.result;
@@ -1360,6 +1365,55 @@
         img.src = dataUrl;
       };
       reader.readAsDataURL(file);
+    }
+
+    function loadSvg(file) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const svgText = e.target.result;
+
+        // Extract viewBox or width/height for dimensions
+        const parser = new DOMParser();
+        const svgDoc = parser.parseFromString(svgText, 'image/svg+xml');
+        const svgEl = svgDoc.querySelector('svg');
+
+        let width = 256, height = 256;
+        if (svgEl) {
+          const vb = svgEl.getAttribute('viewBox');
+          if (vb) {
+            const parts = vb.split(/[\s,]+/).map(Number);
+            if (parts.length === 4) { width = parts[2]; height = parts[3]; }
+          }
+          const w = parseFloat(svgEl.getAttribute('width'));
+          const h = parseFloat(svgEl.getAttribute('height'));
+          if (w > 0 && h > 0) { width = w; height = h; }
+        }
+
+        // Create a data URL for preview rendering
+        const svgDataUrl = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgText)));
+
+        state.sourceImage = {
+          file,
+          dataUrl: svgDataUrl,
+          svgText,
+          width: Math.round(width),
+          height: Math.round(height),
+          format: 'SVG',
+          mimeType: 'image/svg+xml',
+          hasTransparency: true, // SVGs inherently support transparency
+          fileName: file.name,
+          isSvg: true,
+        };
+
+        // Show preview
+        previewImg.src = svgDataUrl;
+        dropzone.classList.add('has-image');
+        previewWrap.classList.add('has-transparency');
+
+        renderMetadata();
+        updateGenerateButton();
+      };
+      reader.readAsText(file);
     }
 
     function detectTransparency(img, mimeType) {
@@ -1425,6 +1479,11 @@
       if (!state.apiKey) { toast('Set your Gemini API key first', 'error'); return; }
       if (!state.sourceImage) { toast('Upload an image first', 'error'); return; }
       if (!prompt) { toast('Enter a prompt describing the changes', 'error'); return; }
+
+      // Route SVG sources to the dedicated SVG pipeline
+      if (state.sourceImage.isSvg) {
+        return runSvgGeneration(prompt, isIteration);
+      }
 
       state.isGenerating = true;
       generateBtn.disabled = true;
@@ -1500,6 +1559,82 @@
       } catch (err) {
         console.error(err);
         const msg = err.message || 'Generation failed';
+        toast(msg, 'error');
+      } finally {
+        state.isGenerating = false;
+        loadingOverlay.classList.remove('active');
+        updateGenerateButton();
+      }
+    }
+
+    // =========================================================================
+    // SVG-to-SVG Generation Pipeline
+    // =========================================================================
+    async function runSvgGeneration(prompt, isIteration = false) {
+      state.isGenerating = true;
+      generateBtn.disabled = true;
+      loadingOverlay.classList.add('active');
+
+      try {
+        // Step 1: Send SVG code to Gemini
+        setStep('Sending SVG to Gemini...', '1/2 — API call');
+        const sourceSvg = isIteration && state.outputImage?.svgText
+          ? state.outputImage.svgText
+          : state.sourceImage.svgText;
+
+        const generatedSvg = await callGeminiSvgEdit(sourceSvg, prompt);
+
+        // Step 2: Validate and render
+        setStep('Rendering SVG...', '2/2 — Validation');
+        const svgDataUrl = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(generatedSvg)));
+
+        // Validate SVG can render
+        await loadImageFromDataUrl(svgDataUrl);
+
+        const svgBlob = new Blob([generatedSvg], { type: 'image/svg+xml' });
+
+        // Display result
+        state.outputImage = {
+          dataUrl: svgDataUrl,
+          blob: svgBlob,
+          format: 'image/svg+xml',
+          svgText: generatedSvg,
+        };
+        outputImg.src = svgDataUrl;
+        outputArea.classList.add('has-result');
+        outputWrap.classList.add('has-transparency');
+
+        // Output metadata
+        const parser = new DOMParser();
+        const svgDoc = parser.parseFromString(generatedSvg, 'image/svg+xml');
+        const svgEl = svgDoc.querySelector('svg');
+        let outW = state.sourceImage.width, outH = state.sourceImage.height;
+        if (svgEl) {
+          const vb = svgEl.getAttribute('viewBox');
+          if (vb) {
+            const parts = vb.split(/[\s,]+/).map(Number);
+            if (parts.length === 4) { outW = Math.round(parts[2]); outH = Math.round(parts[3]); }
+          }
+          const w = parseFloat(svgEl.getAttribute('width'));
+          const h = parseFloat(svgEl.getAttribute('height'));
+          if (w > 0 && h > 0) { outW = Math.round(w); outH = Math.round(h); }
+        }
+
+        outputMetadata.style.display = 'flex';
+        outputMetadata.innerHTML = `
+          <div class="badge"><span class="dot blue"></span>${outW} × ${outH}</div>
+          <div class="badge"><span class="dot green"></span>SVG</div>
+          <div class="badge"><span class="dot yellow"></span>Vector output</div>
+          <div class="badge">${(svgBlob.size / 1024).toFixed(1)} KB</div>
+        `;
+
+        downloadBtn.classList.add('visible');
+        iterateSection.classList.add('visible');
+        toast('SVG generated successfully!', 'success');
+
+      } catch (err) {
+        console.error(err);
+        const msg = err.message || 'SVG generation failed';
         toast(msg, 'error');
       } finally {
         state.isGenerating = false;
@@ -1676,6 +1811,80 @@ Requested change: ${prompt}`;
     }
 
     // =========================================================================
+    // Gemini API Call — SVG-to-SVG (Text Mode)
+    // =========================================================================
+    async function callGeminiSvgEdit(svgSource, prompt) {
+      const fullPrompt = `You are an expert SVG editor. You will receive SVG source code and a modification request.
+
+TASK: Modify the SVG according to the instruction below and return ONLY the modified SVG code.
+
+CRITICAL RULES:
+- Return ONLY valid SVG markup — no explanation, no markdown fences, no extra text
+- The output must start with <svg and end with </svg>
+- Preserve the original viewBox, dimensions, and coordinate system unless the change requires modifying them
+- Maintain the same SVG style (stroke widths, color palette, level of detail) unless explicitly asked to change
+- Keep the SVG clean and optimized — no unnecessary attributes or elements
+- Preserve all existing attributes on the root <svg> element (xmlns, viewBox, width, height, etc.)
+- Only modify what is explicitly requested — everything else must remain identical
+- Do NOT add comments inside the SVG
+- Do NOT wrap the output in backticks or code fences
+
+ORIGINAL SVG SOURCE:
+${svgSource}
+
+REQUESTED CHANGE: ${prompt}`;
+
+      const payload = {
+        contents: [{
+          parts: [{ text: fullPrompt }]
+        }],
+        generationConfig: {
+          responseMimeType: 'text/plain',
+        }
+      };
+
+      const model = 'gemini-2.5-flash';
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${state.apiKey}`;
+
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        const errBody = await response.json().catch(() => ({}));
+        const errMsg = errBody?.error?.message || `API error ${response.status}`;
+        throw new Error(errMsg);
+      }
+
+      const data = await response.json();
+
+      // Extract SVG text from response
+      const candidates = data.candidates || [];
+      for (const candidate of candidates) {
+        const parts = candidate.content?.parts || [];
+        for (const part of parts) {
+          if (part.text) {
+            // Clean up: extract just the SVG tag from response
+            const text = part.text.trim();
+            const svgMatch = text.match(/<svg[\s\S]*<\/svg>/i);
+            if (svgMatch) {
+              return svgMatch[0];
+            }
+            // If the entire response looks like SVG
+            if (text.startsWith('<svg') || text.startsWith('<?xml')) {
+              return text;
+            }
+            throw new Error(`Gemini returned text but no valid SVG was found. Response: ${text.substring(0, 200)}`);
+          }
+        }
+      }
+
+      throw new Error('No response from Gemini. Try rephrasing your prompt.');
+    }
+
+    // =========================================================================
     // Aspect Ratio Matching
     // =========================================================================
     function getBestAspectRatio(w, h) {
@@ -1840,7 +2049,8 @@ Requested change: ${prompt}`;
     downloadBtn.addEventListener('click', () => {
       if (!state.outputImage) return;
 
-      const ext = state.outputImage.format === 'image/png' ? 'png' : 'jpg';
+      const ext = state.outputImage.format === 'image/svg+xml' ? 'svg'
+               : state.outputImage.format === 'image/png' ? 'png' : 'jpg';
       const origName = state.sourceImage.fileName.replace(/\.[^.]+$/, '');
       const fileName = `${origName}-remix.${ext}`;
 
