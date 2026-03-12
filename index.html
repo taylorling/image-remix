@@ -1930,62 +1930,103 @@ REQUESTED CHANGE: ${prompt}`;
     }
 
     function chromaKeyRemove(canvas) {
-      // Remove chroma key green (#00FF00) background with smooth edge handling.
-      // Returns alpha channel array (0-255 per pixel).
+      const w = canvas.width, h = canvas.height;
       const ctx = canvas.getContext('2d');
-      const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const imgData = ctx.getImageData(0, 0, w, h);
       const d = imgData.data;
 
+      // Pass 1: Compute per-pixel green score and set initial alpha + despill
+      const greenScore = new Float32Array(w * h);
       for (let i = 0; i < d.length; i += 4) {
         const r = d[i], g = d[i + 1], b = d[i + 2];
+        const px = i >> 2;
 
-        // How "chroma green" is this pixel?
-        // Pure green: r=0, g=255, b=0. We measure greenness as the
-        // degree to which green dominates over red and blue.
-        const greenDominance = g - Math.max(r, b);
+        // Green score: combine hue-based and dominance-based detection
+        const maxRB = Math.max(r, b);
+        const dominance = g - maxRB;
+        const brightness = (r + g + b) / 3;
 
-        if (greenDominance > 180 && g > 200) {
-          // Very green — fully transparent
-          d[i + 3] = 0;
-        } else if (greenDominance > 80 && g > 150) {
-          // Partially green — edge zone, smooth falloff
-          const t = (greenDominance - 80) / 100; // 0..1
-          d[i + 3] = Math.round(255 * (1 - t));
-          // Despill: reduce green channel to remove green fringing
-          d[i + 1] = Math.min(g, Math.max(r, b) + 30);
+        // Normalized green score 0..1 (0 = not green, 1 = pure chroma green)
+        let score = 0;
+        if (dominance > 30 && g > 80) {
+          // Dominance-based: how much green exceeds red and blue
+          score = Math.min(1, (dominance - 30) / 150);
+          // Boost score for bright greens (closer to #00FF00)
+          if (g > 180 && maxRB < 120) score = Math.min(1, score * 1.4);
         }
-        // else: not green, keep fully opaque (alpha stays 255)
+
+        greenScore[px] = score;
+
+        if (score > 0.7) {
+          // Clearly green — fully transparent
+          d[i + 3] = 0;
+        } else if (score > 0.15) {
+          // Transition zone — smooth falloff
+          const alpha = Math.round(255 * (1 - (score - 0.15) / 0.55));
+          d[i + 3] = Math.max(0, Math.min(255, alpha));
+        }
+        // else: not green, keep fully opaque
+
+        // Despill: remove green color cast from all semi-transparent and edge pixels
+        if (score > 0.05) {
+          const spillStrength = Math.min(1, score * 2);
+          const targetG = maxRB + Math.round(10 * (1 - spillStrength));
+          d[i + 1] = Math.min(g, Math.max(targetG, Math.round(g * (1 - spillStrength * 0.6))));
+        }
+      }
+
+      // Pass 2: Edge erosion — shrink the opaque region by 1px to remove
+      // the green fringe that lives right at the boundary
+      const alpha = new Uint8Array(w * h);
+      for (let i = 0; i < alpha.length; i++) alpha[i] = d[i * 4 + 3];
+
+      for (let y = 1; y < h - 1; y++) {
+        for (let x = 1; x < w - 1; x++) {
+          const idx = y * w + x;
+          if (alpha[idx] === 0) continue;
+
+          // Check if any neighbor is fully transparent (green)
+          const hasGreenNeighbor =
+            alpha[idx - 1] === 0 || alpha[idx + 1] === 0 ||
+            alpha[idx - w] === 0 || alpha[idx + w] === 0;
+
+          if (hasGreenNeighbor) {
+            // This pixel borders the green — soften it
+            const currentAlpha = d[idx * 4 + 3];
+            d[idx * 4 + 3] = Math.round(currentAlpha * 0.45);
+            // Extra despill on border pixels
+            const gi = idx * 4 + 1;
+            d[gi] = Math.min(d[gi], Math.max(d[idx * 4], d[idx * 4 + 2]) + 5);
+          }
+        }
+      }
+
+      // Pass 3: Soften 1px ring just inside the eroded edge for smooth falloff
+      const alpha2 = new Uint8Array(w * h);
+      for (let i = 0; i < alpha2.length; i++) alpha2[i] = d[i * 4 + 3];
+
+      for (let y = 2; y < h - 2; y++) {
+        for (let x = 2; x < w - 2; x++) {
+          const idx = y * w + x;
+          if (alpha2[idx] === 0 || alpha2[idx] < 128) continue;
+
+          // Check if any neighbor was softened (has low alpha)
+          const neighborAlphas = [
+            alpha2[idx - 1], alpha2[idx + 1],
+            alpha2[idx - w], alpha2[idx + w]
+          ];
+          const minNeighbor = Math.min(...neighborAlphas);
+
+          if (minNeighbor < 128 && minNeighbor > 0) {
+            // Blend toward the softened neighbor for gradual falloff
+            const currentAlpha = d[idx * 4 + 3];
+            d[idx * 4 + 3] = Math.round(currentAlpha * 0.8);
+          }
+        }
       }
 
       ctx.putImageData(imgData, 0, 0);
       return canvas;
-    }
-
-    function applyAlphaMask(targetCanvas, sourceImg) {
-      // Refine transparency using the original image's alpha channel.
-      // Takes the minimum alpha between current canvas and original mask,
-      // ensuring we never make an originally-opaque subject pixel transparent.
-      const w = targetCanvas.width;
-      const h = targetCanvas.height;
-
-      const srcCanvas = document.createElement('canvas');
-      srcCanvas.width = w;
-      srcCanvas.height = h;
-      const srcCtx = srcCanvas.getContext('2d');
-      srcCtx.drawImage(sourceImg, 0, 0, w, h);
-      const srcData = srcCtx.getImageData(0, 0, w, h);
-
-      const tgtCtx = targetCanvas.getContext('2d');
-      const tgtData = tgtCtx.getImageData(0, 0, w, h);
-
-      for (let i = 3; i < tgtData.data.length; i += 4) {
-        // Use the minimum: chroma key might catch things the mask misses
-        // and vice versa. Min gives us the tightest transparency boundary.
-        tgtData.data[i] = Math.min(tgtData.data[i], srcData.data[i]);
-      }
-
-      tgtCtx.putImageData(tgtData, 0, 0);
-      return targetCanvas;
     }
 
     function resizeImage(img, targetW, targetH) {
