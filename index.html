@@ -1934,93 +1934,122 @@ REQUESTED CHANGE: ${prompt}`;
       const ctx = canvas.getContext('2d');
       const imgData = ctx.getImageData(0, 0, w, h);
       const d = imgData.data;
+      const totalPx = w * h;
 
-      // Pass 1: Compute per-pixel green score and set initial alpha + despill
-      const greenScore = new Float32Array(w * h);
+      // Pass 1: Classify every pixel as green (0) or foreground (1)
+      // using aggressive HSL + dominance detection
+      const isGreen = new Uint8Array(totalPx);
+      const greenScore = new Float32Array(totalPx);
+
       for (let i = 0; i < d.length; i += 4) {
         const r = d[i], g = d[i + 1], b = d[i + 2];
         const px = i >> 2;
+        const maxC = Math.max(r, g, b), minC = Math.min(r, g, b);
+        const delta = maxC - minC;
 
-        // Green score: combine hue-based and dominance-based detection
-        const maxRB = Math.max(r, b);
-        const dominance = g - maxRB;
-        const brightness = (r + g + b) / 3;
+        // Compute hue (0-360)
+        let hue = 0;
+        if (delta > 0) {
+          if (maxC === g) hue = 60 * (((b - r) / delta) + 2);
+          else if (maxC === r) hue = 60 * (((g - b) / delta) % 6);
+          else hue = 60 * (((r - g) / delta) + 4);
+          if (hue < 0) hue += 360;
+        }
+        const sat = maxC === 0 ? 0 : delta / maxC;
 
-        // Normalized green score 0..1 (0 = not green, 1 = pure chroma green)
+        // Wide green hue range: 70-170 degrees
+        const inGreenHue = hue >= 70 && hue <= 170;
+        const dominance = g - Math.max(r, b);
+
         let score = 0;
-        if (dominance > 30 && g > 80) {
-          // Dominance-based: how much green exceeds red and blue
-          score = Math.min(1, (dominance - 30) / 150);
-          // Boost score for bright greens (closer to #00FF00)
-          if (g > 180 && maxRB < 120) score = Math.min(1, score * 1.4);
+        // Pure chroma green detection
+        if (inGreenHue && sat > 0.25 && g > 60 && dominance > 15) {
+          score = Math.min(1, (dominance / 180) + (sat * 0.4));
+          if (g > 160 && Math.max(r, b) < 140) score = Math.min(1, score * 1.5);
+        }
+        // Catch lighter/desaturated greens near edges
+        if (inGreenHue && sat > 0.12 && dominance > 8 && score < 0.3) {
+          score = Math.max(score, Math.min(0.5, (dominance - 8) / 80));
         }
 
         greenScore[px] = score;
-
-        if (score > 0.7) {
-          // Clearly green — fully transparent
-          d[i + 3] = 0;
-        } else if (score > 0.15) {
-          // Transition zone — smooth falloff
-          const alpha = Math.round(255 * (1 - (score - 0.15) / 0.55));
-          d[i + 3] = Math.max(0, Math.min(255, alpha));
-        }
-        // else: not green, keep fully opaque
-
-        // Despill: remove green color cast from all semi-transparent and edge pixels
-        if (score > 0.05) {
-          const spillStrength = Math.min(1, score * 2);
-          const targetG = maxRB + Math.round(10 * (1 - spillStrength));
-          d[i + 1] = Math.min(g, Math.max(targetG, Math.round(g * (1 - spillStrength * 0.6))));
-        }
+        isGreen[px] = score > 0.35 ? 1 : 0;
       }
 
-      // Pass 2: Edge erosion — shrink the opaque region by 1px to remove
-      // the green fringe that lives right at the boundary
-      const alpha = new Uint8Array(w * h);
-      for (let i = 0; i < alpha.length; i++) alpha[i] = d[i * 4 + 3];
+      // Pass 2: Compute distance from green for every foreground pixel (BFS)
+      // This gives us a clean falloff from the green boundary
+      const ERODE_RADIUS = 3;
+      const dist = new Float32Array(totalPx);
+      dist.fill(999);
+      const queue = [];
 
-      for (let y = 1; y < h - 1; y++) {
-        for (let x = 1; x < w - 1; x++) {
-          const idx = y * w + x;
-          if (alpha[idx] === 0) continue;
+      // Seed: all green pixels get distance 0
+      for (let i = 0; i < totalPx; i++) {
+        if (isGreen[i]) { dist[i] = 0; queue.push(i); }
+      }
 
-          // Check if any neighbor is fully transparent (green)
-          const hasGreenNeighbor =
-            alpha[idx - 1] === 0 || alpha[idx + 1] === 0 ||
-            alpha[idx - w] === 0 || alpha[idx + w] === 0;
+      // BFS outward into foreground pixels
+      let head = 0;
+      while (head < queue.length) {
+        const idx = queue[head++];
+        const x = idx % w, y = (idx - x) / w;
+        const cd = dist[idx] + 1;
+        if (cd > ERODE_RADIUS + 2) continue;
 
-          if (hasGreenNeighbor) {
-            // This pixel borders the green — soften it
-            const currentAlpha = d[idx * 4 + 3];
-            d[idx * 4 + 3] = Math.round(currentAlpha * 0.45);
-            // Extra despill on border pixels
-            const gi = idx * 4 + 1;
-            d[gi] = Math.min(d[gi], Math.max(d[idx * 4], d[idx * 4 + 2]) + 5);
+        const neighbors = [];
+        if (x > 0) neighbors.push(idx - 1);
+        if (x < w - 1) neighbors.push(idx + 1);
+        if (y > 0) neighbors.push(idx - w);
+        if (y < h - 1) neighbors.push(idx + w);
+        // Diagonals for smoother edges
+        if (x > 0 && y > 0) neighbors.push(idx - w - 1);
+        if (x < w - 1 && y > 0) neighbors.push(idx - w + 1);
+        if (x > 0 && y < h - 1) neighbors.push(idx + w - 1);
+        if (x < w - 1 && y < h - 1) neighbors.push(idx + w + 1);
+
+        for (const ni of neighbors) {
+          if (cd < dist[ni]) {
+            dist[ni] = cd;
+            queue.push(ni);
           }
         }
       }
 
-      // Pass 3: Soften 1px ring just inside the eroded edge for smooth falloff
-      const alpha2 = new Uint8Array(w * h);
-      for (let i = 0; i < alpha2.length; i++) alpha2[i] = d[i * 4 + 3];
+      // Pass 3: Apply alpha and despill based on distance + green score
+      for (let px = 0; px < totalPx; px++) {
+        const i = px * 4;
+        const r = d[i], g = d[i + 1], b = d[i + 2];
+        const score = greenScore[px];
+        const distance = dist[px];
 
-      for (let y = 2; y < h - 2; y++) {
-        for (let x = 2; x < w - 2; x++) {
-          const idx = y * w + x;
-          if (alpha2[idx] === 0 || alpha2[idx] < 128) continue;
+        if (isGreen[px]) {
+          // Definitely green background — fully transparent
+          d[i + 3] = 0;
+          continue;
+        }
 
-          // Check if any neighbor was softened (has low alpha)
-          const neighborAlphas = [
-            alpha2[idx - 1], alpha2[idx + 1],
-            alpha2[idx - w], alpha2[idx + w]
-          ];
-          const minNeighbor = Math.min(...neighborAlphas);
+        // Distance-based erosion: pixels very close to green get reduced alpha
+        if (distance <= ERODE_RADIUS) {
+          // Smooth ramp: 0 at boundary → 255 at ERODE_RADIUS
+          const t = distance / ERODE_RADIUS;
+          // Use cubic ease-in for sharper cutoff near green
+          const alpha = Math.round(255 * t * t);
+          d[i + 3] = Math.min(d[i + 3], alpha);
+        }
 
-          if (minNeighbor < 128 && minNeighbor > 0) {
-            // Blend toward the softened neighbor for gradual falloff
-            const currentAlpha = d[idx * 4 + 3];
-            d[idx * 4 + 3] = Math.round(currentAlpha * 0.8);
+        // Aggressive despill: remove green tint from any pixel near green
+        // Stronger for closer pixels and higher green scores
+        const spillDist = Math.min(1, distance / (ERODE_RADIUS + 2));
+        const spillFromScore = score > 0.05 ? Math.min(1, score * 3) : 0;
+        const spillStrength = Math.max(spillFromScore, 1 - spillDist);
+
+        if (spillStrength > 0.01) {
+          const maxRB = Math.max(r, b);
+          const avgRB = (r + b) / 2;
+          // Target green: should not exceed average of red and blue
+          const targetG = Math.round(avgRB + (maxRB - avgRB) * 0.3);
+          if (g > targetG) {
+            d[i + 1] = Math.round(g - (g - targetG) * spillStrength);
           }
         }
       }
