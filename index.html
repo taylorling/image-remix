@@ -1729,8 +1729,9 @@ ${forbiddenDistortions}
 TRANSPARENCY RULES:
 ${state.sourceImage.hasTransparency
   ? `- The original image has a TRANSPARENT background.
-- Place the subject on a plain SOLID WHITE (#FFFFFF) background.
-- Keep a clean, sharp edge between the subject and the background.`
+- Place the subject on a SOLID MAGENTA (#FF00FF) background.
+- Fill ALL background/empty areas with EXACTLY #FF00FF magenta — no gradients, no shading, no variation.
+- Keep a clean, sharp edge between the subject and the magenta background.`
   : '- The original image has a solid background.'}
 
 OTHER RULES:
@@ -1950,7 +1951,52 @@ REQUESTED CHANGE: ${prompt}`;
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
       URL.revokeObjectURL(objUrl);
+
+      // Post-process: despill magenta/white fringe from semi-transparent edge pixels
+      despillEdges(canvas);
       return canvas;
+    }
+
+    function despillEdges(canvas) {
+      const w = canvas.width, h = canvas.height;
+      const ctx = canvas.getContext('2d');
+      const imgData = ctx.getImageData(0, 0, w, h);
+      const d = imgData.data;
+
+      for (let i = 0; i < d.length; i += 4) {
+        const a = d[i + 3];
+        // Only process semi-transparent edge pixels (not fully opaque, not fully transparent)
+        if (a <= 0 || a >= 250) continue;
+
+        const r = d[i], g = d[i + 1], b = d[i + 2];
+        const alphaRatio = a / 255;
+
+        // Despill magenta: high R+B, low G is magenta contamination
+        const magentaStrength = Math.min(r, b) - g;
+        if (magentaStrength > 20) {
+          const spill = Math.min(1, magentaStrength / 150);
+          d[i]     = Math.round(r - (r - g) * spill); // pull R toward G
+          d[i + 2] = Math.round(b - (b - g) * spill); // pull B toward G
+        }
+
+        // Despill white: all channels high on low-alpha pixels = white fringe
+        const minC = Math.min(r, g, b);
+        if (minC > 180 && alphaRatio < 0.7) {
+          // Darken the fringe proportionally to how transparent it is
+          const whiteness = (minC - 180) / 75; // 0..1
+          const correction = whiteness * (1 - alphaRatio);
+          d[i]     = Math.round(r * (1 - correction));
+          d[i + 1] = Math.round(g * (1 - correction));
+          d[i + 2] = Math.round(b * (1 - correction));
+        }
+
+        // Sharpen very faint edge pixels — if alpha is very low, push to transparent
+        if (a < 30) {
+          d[i + 3] = 0;
+        }
+      }
+
+      ctx.putImageData(imgData, 0, 0);
     }
 
     function resizeImage(img, targetW, targetH) {
