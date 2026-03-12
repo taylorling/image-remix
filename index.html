@@ -1452,11 +1452,12 @@
         }
 
         // Step 3: Handle transparency
-        setStep('Processing format...', '3/4 — Format & transparency');
+        setStep('Removing background...', '3/4 — Transparency restore');
         if (state.sourceImage.hasTransparency) {
-          // Apply the original image's alpha channel to the generated image.
-          // The AI typically fills in a background, so we use the original
-          // alpha mask to restore transparency in the correct regions.
+          // Two-pass transparency restoration:
+          // 1) Chroma key: remove the #00FF00 green background we asked Gemini to use
+          chromaKeyRemove(finalCanvas);
+          // 2) Alpha mask: refine with original image's alpha channel as safety net
           const alphaSource = await loadImageFromDataUrl(state.sourceImage.dataUrl);
           applyAlphaMask(finalCanvas, alphaSource);
         }
@@ -1592,9 +1593,12 @@ ${forbiddenDistortions}
 
 TRANSPARENCY RULES:
 ${state.sourceImage.hasTransparency
-  ? `- The original image has a TRANSPARENT background — do NOT add any background color or fill behind the subject.
-- Keep the background completely empty/transparent.
-- Only render the subject and elements that were visible in the original — leave all transparent areas unchanged.`
+  ? `- CRITICAL: The original image has a TRANSPARENT background.
+- You MUST place the subject on a SOLID CHROMA KEY GREEN (#00FF00) background.
+- Fill ALL background/empty areas with EXACTLY #00FF00 pure green — no gradients, no shading, no variation.
+- The subject itself must NOT contain any #00FF00 green pixels.
+- Keep a clean, sharp edge between the subject and the green background.
+- Do NOT blend or anti-alias the subject edges into the green — keep edges crisp.`
   : '- The original image has a solid background.'}
 
 OTHER RULES:
@@ -1720,13 +1724,45 @@ Requested change: ${prompt}`;
       return c;
     }
 
+    function chromaKeyRemove(canvas) {
+      // Remove chroma key green (#00FF00) background with smooth edge handling.
+      // Returns alpha channel array (0-255 per pixel).
+      const ctx = canvas.getContext('2d');
+      const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const d = imgData.data;
+
+      for (let i = 0; i < d.length; i += 4) {
+        const r = d[i], g = d[i + 1], b = d[i + 2];
+
+        // How "chroma green" is this pixel?
+        // Pure green: r=0, g=255, b=0. We measure greenness as the
+        // degree to which green dominates over red and blue.
+        const greenDominance = g - Math.max(r, b);
+
+        if (greenDominance > 180 && g > 200) {
+          // Very green — fully transparent
+          d[i + 3] = 0;
+        } else if (greenDominance > 80 && g > 150) {
+          // Partially green — edge zone, smooth falloff
+          const t = (greenDominance - 80) / 100; // 0..1
+          d[i + 3] = Math.round(255 * (1 - t));
+          // Despill: reduce green channel to remove green fringing
+          d[i + 1] = Math.min(g, Math.max(r, b) + 30);
+        }
+        // else: not green, keep fully opaque (alpha stays 255)
+      }
+
+      ctx.putImageData(imgData, 0, 0);
+      return canvas;
+    }
+
     function applyAlphaMask(targetCanvas, sourceImg) {
-      // Extract alpha channel from the original source image and apply it
-      // to the generated image. This restores transparency that the AI removed.
+      // Refine transparency using the original image's alpha channel.
+      // Takes the minimum alpha between current canvas and original mask,
+      // ensuring we never make an originally-opaque subject pixel transparent.
       const w = targetCanvas.width;
       const h = targetCanvas.height;
 
-      // Draw source at target dimensions to get matching alpha data
       const srcCanvas = document.createElement('canvas');
       srcCanvas.width = w;
       srcCanvas.height = h;
@@ -1734,13 +1770,13 @@ Requested change: ${prompt}`;
       srcCtx.drawImage(sourceImg, 0, 0, w, h);
       const srcData = srcCtx.getImageData(0, 0, w, h);
 
-      // Get the generated image pixel data
       const tgtCtx = targetCanvas.getContext('2d');
       const tgtData = tgtCtx.getImageData(0, 0, w, h);
 
-      // Copy alpha channel from source to target
       for (let i = 3; i < tgtData.data.length; i += 4) {
-        tgtData.data[i] = srcData.data[i];
+        // Use the minimum: chroma key might catch things the mask misses
+        // and vice versa. Min gives us the tightest transparency boundary.
+        tgtData.data[i] = Math.min(tgtData.data[i], srcData.data[i]);
       }
 
       tgtCtx.putImageData(tgtData, 0, 0);
