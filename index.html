@@ -1976,46 +1976,30 @@ REQUESTED CHANGE: ${prompt}`;
         isGreen[px] = score > 0.35 ? 1 : 0;
       }
 
-      // Pass 2: Compute distance from green for every foreground pixel (BFS)
-      // This gives us a clean falloff from the green boundary
-      const ERODE_RADIUS = 3;
+      // Pass 2: Compute distance from nearest green pixel via BFS
+      const DESPILL_RADIUS = 4;
       const dist = new Float32Array(totalPx);
       dist.fill(999);
       const queue = [];
 
-      // Seed: all green pixels get distance 0
       for (let i = 0; i < totalPx; i++) {
         if (isGreen[i]) { dist[i] = 0; queue.push(i); }
       }
 
-      // BFS outward into foreground pixels
       let head = 0;
       while (head < queue.length) {
         const idx = queue[head++];
         const x = idx % w, y = (idx - x) / w;
         const cd = dist[idx] + 1;
-        if (cd > ERODE_RADIUS + 2) continue;
+        if (cd > DESPILL_RADIUS) continue;
 
-        const neighbors = [];
-        if (x > 0) neighbors.push(idx - 1);
-        if (x < w - 1) neighbors.push(idx + 1);
-        if (y > 0) neighbors.push(idx - w);
-        if (y < h - 1) neighbors.push(idx + w);
-        // Diagonals for smoother edges
-        if (x > 0 && y > 0) neighbors.push(idx - w - 1);
-        if (x < w - 1 && y > 0) neighbors.push(idx - w + 1);
-        if (x > 0 && y < h - 1) neighbors.push(idx + w - 1);
-        if (x < w - 1 && y < h - 1) neighbors.push(idx + w + 1);
-
-        for (const ni of neighbors) {
-          if (cd < dist[ni]) {
-            dist[ni] = cd;
-            queue.push(ni);
-          }
-        }
+        if (x > 0 && cd < dist[idx - 1]) { dist[idx - 1] = cd; queue.push(idx - 1); }
+        if (x < w - 1 && cd < dist[idx + 1]) { dist[idx + 1] = cd; queue.push(idx + 1); }
+        if (y > 0 && cd < dist[idx - w]) { dist[idx - w] = cd; queue.push(idx - w); }
+        if (y < h - 1 && cd < dist[idx + w]) { dist[idx + w] = cd; queue.push(idx + w); }
       }
 
-      // Pass 3: Apply alpha and despill based on distance + green score
+      // Pass 3: Sharp alpha cutoff + despill
       for (let px = 0; px < totalPx; px++) {
         const i = px * 4;
         const r = d[i], g = d[i + 1], b = d[i + 2];
@@ -2023,33 +2007,29 @@ REQUESTED CHANGE: ${prompt}`;
         const distance = dist[px];
 
         if (isGreen[px]) {
-          // Definitely green background — fully transparent
           d[i + 3] = 0;
           continue;
         }
 
-        // Distance-based erosion: pixels very close to green get reduced alpha
-        if (distance <= ERODE_RADIUS) {
-          // Smooth ramp: 0 at boundary → 255 at ERODE_RADIUS
-          const t = distance / ERODE_RADIUS;
-          // Use cubic ease-in for sharper cutoff near green
-          const alpha = Math.round(255 * t * t);
-          d[i + 3] = Math.min(d[i + 3], alpha);
+        // Only reduce alpha for pixels that are themselves green-contaminated
+        // This keeps sharp edges while removing green fringe pixels
+        if (score > 0.15 && distance <= 1) {
+          // Semi-green boundary pixel — alpha based on how green it is
+          d[i + 3] = Math.min(d[i + 3], Math.round(255 * (1 - score)));
         }
 
-        // Aggressive despill: remove green tint from any pixel near green
-        // Stronger for closer pixels and higher green scores
-        const spillDist = Math.min(1, distance / (ERODE_RADIUS + 2));
-        const spillFromScore = score > 0.05 ? Math.min(1, score * 3) : 0;
-        const spillStrength = Math.max(spillFromScore, 1 - spillDist);
-
-        if (spillStrength > 0.01) {
-          const maxRB = Math.max(r, b);
-          const avgRB = (r + b) / 2;
-          // Target green: should not exceed average of red and blue
-          const targetG = Math.round(avgRB + (maxRB - avgRB) * 0.3);
-          if (g > targetG) {
-            d[i + 1] = Math.round(g - (g - targetG) * spillStrength);
+        // Despill: remove green color cast from pixels near green boundary
+        if (distance <= DESPILL_RADIUS) {
+          const spillStrength = Math.max(
+            score > 0.05 ? Math.min(1, score * 2.5) : 0,
+            distance <= 2 ? 0.8 : (1 - distance / DESPILL_RADIUS) * 0.5
+          );
+          if (spillStrength > 0.01) {
+            const avgRB = (r + b) / 2;
+            const targetG = Math.round(avgRB * 0.95 + Math.max(r, b) * 0.05);
+            if (d[i + 1] > targetG) {
+              d[i + 1] = Math.round(d[i + 1] - (d[i + 1] - targetG) * spillStrength);
+            }
           }
         }
       }
