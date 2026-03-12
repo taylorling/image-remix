@@ -1155,7 +1155,12 @@
   <!-- Toast -->
   <div class="toast" id="toast"></div>
 
-  <script>
+  <script type="module">
+    // =========================================================================
+    // Background removal (ML-based, runs in browser via ONNX/WASM)
+    // =========================================================================
+    import imglyRemoveBackground from 'https://cdn.jsdelivr.net/npm/@imgly/background-removal@1.7.0/+esm';
+
     // =========================================================================
     // State
     // =========================================================================
@@ -1511,10 +1516,9 @@
         }
 
         // Step 3: Handle transparency
-        setStep('Removing background...', '3/4 — Transparency restore');
         if (state.sourceImage.hasTransparency) {
-          // Remove the #00FF00 chroma green background Gemini placed behind the subject
-          chromaKeyRemove(finalCanvas);
+          setStep('Removing background (ML model)...', '3/4 — Transparency restore');
+          await removeBackground(finalCanvas);
         }
 
         // Step 4: Export in correct format with compression
@@ -1724,12 +1728,9 @@ ${forbiddenDistortions}
 
 TRANSPARENCY RULES:
 ${state.sourceImage.hasTransparency
-  ? `- CRITICAL: The original image has a TRANSPARENT background.
-- You MUST place the subject on a SOLID CHROMA KEY GREEN (#00FF00) background.
-- Fill ALL background/empty areas with EXACTLY #00FF00 pure green — no gradients, no shading, no variation.
-- The subject itself must NOT contain any #00FF00 green pixels.
-- Keep a clean, sharp edge between the subject and the green background.
-- Do NOT blend or anti-alias the subject edges into the green — keep edges crisp.`
+  ? `- The original image has a TRANSPARENT background.
+- Place the subject on a plain SOLID WHITE (#FFFFFF) background.
+- Keep a clean, sharp edge between the subject and the background.`
   : '- The original image has a solid background.'}
 
 OTHER RULES:
@@ -1929,112 +1930,18 @@ REQUESTED CHANGE: ${prompt}`;
       return c;
     }
 
-    function chromaKeyRemove(canvas) {
-      const w = canvas.width, h = canvas.height;
+    async function removeBackground(canvas) {
+      // Convert canvas to blob for imgly
+      const blob = await new Promise(r => canvas.toBlob(r, 'image/png'));
+      const resultBlob = await imglyRemoveBackground(blob, {
+        output: { format: 'image/png', quality: 1 },
+      });
+
+      // Draw result back onto the canvas
+      const img = await loadImageFromDataUrl(URL.createObjectURL(resultBlob));
       const ctx = canvas.getContext('2d');
-      const imgData = ctx.getImageData(0, 0, w, h);
-      const d = imgData.data;
-      const totalPx = w * h;
-
-      // Pass 1: Classify every pixel as green (0) or foreground (1)
-      // using aggressive HSL + dominance detection
-      const isGreen = new Uint8Array(totalPx);
-      const greenScore = new Float32Array(totalPx);
-
-      for (let i = 0; i < d.length; i += 4) {
-        const r = d[i], g = d[i + 1], b = d[i + 2];
-        const px = i >> 2;
-        const maxC = Math.max(r, g, b), minC = Math.min(r, g, b);
-        const delta = maxC - minC;
-
-        // Compute hue (0-360)
-        let hue = 0;
-        if (delta > 0) {
-          if (maxC === g) hue = 60 * (((b - r) / delta) + 2);
-          else if (maxC === r) hue = 60 * (((g - b) / delta) % 6);
-          else hue = 60 * (((r - g) / delta) + 4);
-          if (hue < 0) hue += 360;
-        }
-        const sat = maxC === 0 ? 0 : delta / maxC;
-
-        // Wide green hue range: 70-170 degrees
-        const inGreenHue = hue >= 70 && hue <= 170;
-        const dominance = g - Math.max(r, b);
-
-        let score = 0;
-        // Pure chroma green detection
-        if (inGreenHue && sat > 0.25 && g > 60 && dominance > 15) {
-          score = Math.min(1, (dominance / 180) + (sat * 0.4));
-          if (g > 160 && Math.max(r, b) < 140) score = Math.min(1, score * 1.5);
-        }
-        // Catch lighter/desaturated greens near edges
-        if (inGreenHue && sat > 0.12 && dominance > 8 && score < 0.3) {
-          score = Math.max(score, Math.min(0.5, (dominance - 8) / 80));
-        }
-
-        greenScore[px] = score;
-        isGreen[px] = score > 0.35 ? 1 : 0;
-      }
-
-      // Pass 2: Compute distance from nearest green pixel via BFS
-      const DESPILL_RADIUS = 4;
-      const dist = new Float32Array(totalPx);
-      dist.fill(999);
-      const queue = [];
-
-      for (let i = 0; i < totalPx; i++) {
-        if (isGreen[i]) { dist[i] = 0; queue.push(i); }
-      }
-
-      let head = 0;
-      while (head < queue.length) {
-        const idx = queue[head++];
-        const x = idx % w, y = (idx - x) / w;
-        const cd = dist[idx] + 1;
-        if (cd > DESPILL_RADIUS) continue;
-
-        if (x > 0 && cd < dist[idx - 1]) { dist[idx - 1] = cd; queue.push(idx - 1); }
-        if (x < w - 1 && cd < dist[idx + 1]) { dist[idx + 1] = cd; queue.push(idx + 1); }
-        if (y > 0 && cd < dist[idx - w]) { dist[idx - w] = cd; queue.push(idx - w); }
-        if (y < h - 1 && cd < dist[idx + w]) { dist[idx + w] = cd; queue.push(idx + w); }
-      }
-
-      // Pass 3: Sharp alpha cutoff + despill
-      for (let px = 0; px < totalPx; px++) {
-        const i = px * 4;
-        const r = d[i], g = d[i + 1], b = d[i + 2];
-        const score = greenScore[px];
-        const distance = dist[px];
-
-        if (isGreen[px]) {
-          d[i + 3] = 0;
-          continue;
-        }
-
-        // Only reduce alpha for pixels that are themselves green-contaminated
-        // This keeps sharp edges while removing green fringe pixels
-        if (score > 0.15 && distance <= 1) {
-          // Semi-green boundary pixel — alpha based on how green it is
-          d[i + 3] = Math.min(d[i + 3], Math.round(255 * (1 - score)));
-        }
-
-        // Despill: remove green color cast from pixels near green boundary
-        if (distance <= DESPILL_RADIUS) {
-          const spillStrength = Math.max(
-            score > 0.05 ? Math.min(1, score * 2.5) : 0,
-            distance <= 2 ? 0.8 : (1 - distance / DESPILL_RADIUS) * 0.5
-          );
-          if (spillStrength > 0.01) {
-            const avgRB = (r + b) / 2;
-            const targetG = Math.round(avgRB * 0.95 + Math.max(r, b) * 0.05);
-            if (d[i + 1] > targetG) {
-              d[i + 1] = Math.round(d[i + 1] - (d[i + 1] - targetG) * spillStrength);
-            }
-          }
-        }
-      }
-
-      ctx.putImageData(imgData, 0, 0);
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
       return canvas;
     }
 
