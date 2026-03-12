@@ -2050,37 +2050,79 @@ REQUESTED CHANGE: ${prompt}`;
       const ctx = canvas.getContext('2d');
       const imgData = ctx.getImageData(0, 0, w, h);
       const d = imgData.data;
+      const totalPx = w * h;
 
-      for (let i = 0; i < d.length; i += 4) {
+      // Build a distance map from transparent pixels so we know which
+      // opaque pixels are near edges (and thus likely magenta-contaminated)
+      const alpha = new Uint8Array(totalPx);
+      for (let i = 0; i < totalPx; i++) alpha[i] = d[i * 4 + 3];
+
+      const EDGE_RADIUS = 6;
+      const distFromTransparent = new Uint8Array(totalPx);
+      distFromTransparent.fill(255);
+      const queue = [];
+
+      // Seed: all transparent pixels
+      for (let i = 0; i < totalPx; i++) {
+        if (alpha[i] === 0) { distFromTransparent[i] = 0; queue.push(i); }
+      }
+      let head = 0;
+      while (head < queue.length) {
+        const idx = queue[head++];
+        const cd = distFromTransparent[idx] + 1;
+        if (cd > EDGE_RADIUS) continue;
+        const x = idx % w, y = (idx - x) / w;
+        const neighbors = [];
+        if (x > 0) neighbors.push(idx - 1);
+        if (x < w - 1) neighbors.push(idx + 1);
+        if (y > 0) neighbors.push(idx - w);
+        if (y < h - 1) neighbors.push(idx + w);
+        for (const ni of neighbors) {
+          if (cd < distFromTransparent[ni]) {
+            distFromTransparent[ni] = cd;
+            queue.push(ni);
+          }
+        }
+      }
+
+      for (let px = 0; px < totalPx; px++) {
+        const i = px * 4;
         const a = d[i + 3];
-        // Only process semi-transparent edge pixels (not fully opaque, not fully transparent)
-        if (a <= 0 || a >= 250) continue;
+        if (a === 0) continue;
 
         const r = d[i], g = d[i + 1], b = d[i + 2];
+        const dist = distFromTransparent[px];
+        const isEdge = dist <= EDGE_RADIUS;
         const alphaRatio = a / 255;
 
-        // Despill magenta: high R+B, low G is magenta contamination
+        // Despill magenta from ALL visible pixels near edges
+        // Magenta = high R and high B relative to G
         const magentaStrength = Math.min(r, b) - g;
-        if (magentaStrength > 20) {
-          const spill = Math.min(1, magentaStrength / 150);
-          d[i]     = Math.round(r - (r - g) * spill); // pull R toward G
-          d[i + 2] = Math.round(b - (b - g) * spill); // pull B toward G
+        if (magentaStrength > 8) {
+          // Stronger correction near edges, lighter for interior pixels
+          const edgeFactor = isEdge ? Math.min(1, (EDGE_RADIUS - dist + 1) / EDGE_RADIUS) : 0;
+          const alphaFactor = a < 250 ? 1.0 : edgeFactor;
+          const spill = Math.min(1, magentaStrength / 80) * alphaFactor;
+          if (spill > 0.01) {
+            d[i]     = Math.round(r - (r - g) * spill); // pull R toward G
+            d[i + 2] = Math.round(b - (b - g) * spill); // pull B toward G
+          }
         }
 
-        // Despill white: all channels high on low-alpha pixels = white fringe
-        const minC = Math.min(r, g, b);
-        if (minC > 180 && alphaRatio < 0.7) {
-          // Darken the fringe proportionally to how transparent it is
-          const whiteness = (minC - 180) / 75; // 0..1
-          const correction = whiteness * (1 - alphaRatio);
-          d[i]     = Math.round(r * (1 - correction));
-          d[i + 1] = Math.round(g * (1 - correction));
-          d[i + 2] = Math.round(b * (1 - correction));
-        }
+        // Semi-transparent pixels: additional cleanup
+        if (a < 250) {
+          // Despill white fringe
+          const minC = Math.min(d[i], d[i + 1], d[i + 2]);
+          if (minC > 160 && alphaRatio < 0.7) {
+            const whiteness = (minC - 160) / 95;
+            const correction = whiteness * (1 - alphaRatio);
+            d[i]     = Math.round(d[i] * (1 - correction));
+            d[i + 1] = Math.round(d[i + 1] * (1 - correction));
+            d[i + 2] = Math.round(d[i + 2] * (1 - correction));
+          }
 
-        // Sharpen very faint edge pixels — if alpha is very low, push to transparent
-        if (a < 30) {
-          d[i + 3] = 0;
+          // Very faint pixels → fully transparent
+          if (a < 30) d[i + 3] = 0;
         }
       }
 
