@@ -1454,8 +1454,11 @@
         // Step 3: Handle transparency
         setStep('Processing format...', '3/4 — Format & transparency');
         if (state.sourceImage.hasTransparency) {
-          // Try to preserve/restore transparency from original
-          // The AI output likely has a background; we'll keep it as-is since we can't guarantee auto-removal
+          // Apply the original image's alpha channel to the generated image.
+          // The AI typically fills in a background, so we use the original
+          // alpha mask to restore transparency in the correct regions.
+          const alphaSource = await loadImageFromDataUrl(state.sourceImage.dataUrl);
+          applyAlphaMask(finalCanvas, alphaSource);
         }
 
         // Step 4: Export in correct format with compression
@@ -1587,6 +1590,13 @@ SPATIAL PRESERVATION:
 
 ${forbiddenDistortions}
 
+TRANSPARENCY RULES:
+${state.sourceImage.hasTransparency
+  ? `- The original image has a TRANSPARENT background — do NOT add any background color or fill behind the subject.
+- Keep the background completely empty/transparent.
+- Only render the subject and elements that were visible in the original — leave all transparent areas unchanged.`
+  : '- The original image has a solid background.'}
+
 OTHER RULES:
 - Only modify what is explicitly requested — everything else must remain pixel-perfect identical
 - The output must look like it was created by the same artist as the original
@@ -1708,6 +1718,33 @@ Requested change: ${prompt}`;
       c.height = img.naturalHeight;
       c.getContext('2d').drawImage(img, 0, 0);
       return c;
+    }
+
+    function applyAlphaMask(targetCanvas, sourceImg) {
+      // Extract alpha channel from the original source image and apply it
+      // to the generated image. This restores transparency that the AI removed.
+      const w = targetCanvas.width;
+      const h = targetCanvas.height;
+
+      // Draw source at target dimensions to get matching alpha data
+      const srcCanvas = document.createElement('canvas');
+      srcCanvas.width = w;
+      srcCanvas.height = h;
+      const srcCtx = srcCanvas.getContext('2d');
+      srcCtx.drawImage(sourceImg, 0, 0, w, h);
+      const srcData = srcCtx.getImageData(0, 0, w, h);
+
+      // Get the generated image pixel data
+      const tgtCtx = targetCanvas.getContext('2d');
+      const tgtData = tgtCtx.getImageData(0, 0, w, h);
+
+      // Copy alpha channel from source to target
+      for (let i = 3; i < tgtData.data.length; i += 4) {
+        tgtData.data[i] = srcData.data[i];
+      }
+
+      tgtCtx.putImageData(tgtData, 0, 0);
+      return targetCanvas;
     }
 
     function resizeImage(img, targetW, targetH) {
