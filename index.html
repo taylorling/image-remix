@@ -971,6 +971,7 @@
       padding: 11px 20px;
       border-radius: var(--radius-sm);
       font-size: 13px;
+      line-height: 1.4;
       font-weight: 600;
       font-family: var(--font-display);
       cursor: pointer;
@@ -2020,7 +2021,12 @@ REQUESTED CHANGE: ${prompt}`;
     }
 
     async function removeBackground(canvas) {
-      // Convert canvas to blob for imgly
+      // Step A: Chroma-key magenta first — we KNOW the bg is #FF00FF
+      // This removes pure/near-pure magenta pixels and despills edge pixels
+      // BEFORE the ML model sees them, giving it a much cleaner input.
+      chromaKeyMagenta(canvas);
+
+      // Step B: ML background removal for fine edges (hair, fur, etc.)
       const blob = await new Promise(r => canvas.toBlob(r, 'image/png'));
       const resultBlob = await imglyRemoveBackground(blob, {
         output: { quality: 1, type: 'foreground' },
@@ -2040,9 +2046,43 @@ REQUESTED CHANGE: ${prompt}`;
       ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
       URL.revokeObjectURL(objUrl);
 
-      // Post-process: despill magenta/white fringe from semi-transparent edge pixels
+      // Step C: Final despill pass for any remaining fringe
       despillEdges(canvas);
       return canvas;
+    }
+
+    function chromaKeyMagenta(canvas) {
+      const w = canvas.width, h = canvas.height;
+      const ctx = canvas.getContext('2d');
+      const imgData = ctx.getImageData(0, 0, w, h);
+      const d = imgData.data;
+
+      for (let i = 0; i < d.length; i += 4) {
+        const r = d[i], g = d[i + 1], b = d[i + 2];
+
+        // Detect magenta: high R, low G, high B
+        // Pure magenta is (255, 0, 255). We use a generous range.
+        const magentaness = (Math.min(r, b) - g) / 255; // -1..1, higher = more magenta
+
+        if (magentaness > 0.55) {
+          // Strong magenta — make fully transparent
+          d[i + 3] = 0;
+        } else if (magentaness > 0.15) {
+          // Partial magenta — despill the color and reduce alpha proportionally
+          // The more magenta, the more we correct
+          const strength = (magentaness - 0.15) / 0.4; // 0..1
+          // Pull R and B toward G to remove magenta tint
+          const correction = Math.min(1, strength * 1.5);
+          d[i]     = Math.round(r - (r - g) * correction);
+          d[i + 2] = Math.round(b - (b - g) * correction);
+          // Reduce alpha for heavily contaminated pixels
+          if (strength > 0.5) {
+            d[i + 3] = Math.round(d[i + 3] * (1 - (strength - 0.5) * 1.2));
+          }
+        }
+      }
+
+      ctx.putImageData(imgData, 0, 0);
     }
 
     function despillEdges(canvas) {
