@@ -526,6 +526,58 @@
     }
 
     /* =========================================================
+       STYLE FIDELITY SLIDER
+    ========================================================= */
+    .fidelity-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-top: 12px;
+    }
+    .fidelity-label {
+      font-size: 11px;
+      color: var(--text-dim);
+      white-space: nowrap;
+      min-width: 52px;
+    }
+    .fidelity-slider {
+      flex: 1;
+      -webkit-appearance: none;
+      appearance: none;
+      height: 4px;
+      border-radius: 2px;
+      background: var(--surface-3);
+      outline: none;
+    }
+    .fidelity-slider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: var(--accent);
+      cursor: pointer;
+      border: 2px solid var(--bg);
+      box-shadow: 0 0 0 1px var(--accent);
+    }
+    .fidelity-slider::-moz-range-thumb {
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: var(--accent);
+      cursor: pointer;
+      border: 2px solid var(--bg);
+      box-shadow: 0 0 0 1px var(--accent);
+    }
+    .fidelity-value {
+      font-size: 11px;
+      color: var(--text);
+      font-weight: 600;
+      min-width: 52px;
+      text-align: right;
+    }
+
+    /* =========================================================
        GENERATE BUTTON
     ========================================================= */
     .generate-btn {
@@ -1100,6 +1152,12 @@
           <span class="suggestion-chip" data-prompt="Change the outfit to business professional attire, keep the same character and pose">Change outfit</span>
           <span class="suggestion-chip" data-prompt="Change the background to an office environment, keep the character exactly the same">New background</span>
         </div>
+        <div class="fidelity-row">
+          <span class="fidelity-label">Creative</span>
+          <input type="range" class="fidelity-slider" id="fidelitySlider" min="1" max="5" step="1" value="4">
+          <span class="fidelity-label" style="text-align:right">Strict</span>
+          <span class="fidelity-value" id="fidelityValue">Faithful</span>
+        </div>
       </div>
 
       <button class="generate-btn" id="generateBtn" disabled>
@@ -1145,6 +1203,12 @@
           id="iterateInput"
           placeholder="e.g. Make the hair a bit darker..."
         ></textarea>
+        <div class="fidelity-row">
+          <span class="fidelity-label">Creative</span>
+          <input type="range" class="fidelity-slider" id="iterateFidelitySlider" min="1" max="5" step="1" value="4">
+          <span class="fidelity-label" style="text-align:right">Strict</span>
+          <span class="fidelity-value" id="iterateFidelityValue">Faithful</span>
+        </div>
         <button class="iterate-btn" id="iterateBtn">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
             <path d="M21 2v6h-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
@@ -1285,6 +1349,17 @@
     const iterateSection = $('#iterateSection');
     const iterateInput = $('#iterateInput');
     const iterateBtn = $('#iterateBtn');
+    const fidelitySlider = $('#fidelitySlider');
+    const fidelityValue = $('#fidelityValue');
+    const iterateFidelitySlider = $('#iterateFidelitySlider');
+    const iterateFidelityValue = $('#iterateFidelityValue');
+
+    const FIDELITY_LABELS = { 1: 'Creative', 2: 'Flexible', 3: 'Balanced', 4: 'Faithful', 5: 'Strict' };
+    function updateFidelityLabel(slider, label) {
+      label.textContent = FIDELITY_LABELS[slider.value];
+    }
+    fidelitySlider.addEventListener('input', () => updateFidelityLabel(fidelitySlider, fidelityValue));
+    iterateFidelitySlider.addEventListener('input', () => updateFidelityLabel(iterateFidelitySlider, iterateFidelityValue));
     const infoBtn = $('#infoBtn');
     const changelogBackdrop = $('#changelogBackdrop');
     const changelogCancel = $('#changelogCancel');
@@ -1586,7 +1661,8 @@
           ? state.outputImage.dataUrl
           : state.sourceImage.dataUrl;
 
-        const generatedDataUrl = await callGeminiImageEdit(sourceImg, prompt);
+        const fidelity = parseInt(isIteration ? iterateFidelitySlider.value : fidelitySlider.value);
+        const generatedDataUrl = await callGeminiImageEdit(sourceImg, prompt, fidelity);
 
         // Step 2: Verify resolution
         setStep('Checking resolution...', '2/4 — Resolution match');
@@ -1740,7 +1816,7 @@
     // =========================================================================
     // Gemini API Call
     // =========================================================================
-    async function callGeminiImageEdit(imageDataUrl, prompt) {
+    async function callGeminiImageEdit(imageDataUrl, prompt, fidelity = 4) {
       const base64 = imageDataUrl.split(',')[1];
       const mimeType = imageDataUrl.split(';')[0].split(':')[1];
 
@@ -1794,6 +1870,33 @@
 - Any visible change to human body proportions is a CRITICAL ERROR
 - Do NOT reduce the apparent height or vertical extent of figures`;
 
+      const styleInstructions = {
+        1: `STYLE GUIDANCE (Creative mode):
+- You have artistic freedom to reinterpret the style while making the requested change.
+- The result should feel inspired by the original but can diverge in rendering technique, color palette, and line work.
+- Focus on making the change look great, even if it means the style shifts.`,
+        2: `STYLE GUIDANCE (Flexible mode):
+- Keep the general feel and mood of the original art style, but allow some creative latitude.
+- Color palette and overall aesthetic should be similar, but minor rendering differences are acceptable.
+- Prioritize a natural-looking result over pixel-perfect style matching.`,
+        3: `STYLE GUIDANCE (Balanced mode):
+- Maintain the same art style and illustration technique as the original image.
+- Match the color palette, line weight, and shading approach.
+- Small stylistic variations are acceptable if they serve the requested change.`,
+        4: `STYLE GUIDANCE (Faithful mode):
+- Maintain the EXACT same art style, illustration technique, line weight, shading style, and color palette as the original image.
+- The result MUST look like it was created by the same artist in the same session.
+- Match rendering quality: brush texture, edge quality, level of detail, color grading, and lighting direction.
+- Do NOT shift toward photorealism, 3D rendering, or a different illustration genre.`,
+        5: `STYLE GUIDANCE (Strict mode):
+- You MUST replicate the EXACT art style with zero deviation. This is the #1 priority after the requested change.
+- Match EVERY stylistic detail: brush strokes, line weight, edge rendering, shading technique, color temperature, saturation levels, highlight/shadow style, texture quality, and level of detail.
+- The output must be INDISTINGUISHABLE in style from the original — as if the same artist drew both in the same session with the same tools and settings.
+- Do NOT introduce any new rendering techniques, filter effects, or stylistic elements not present in the original.
+- Do NOT shift toward photorealism, 3D rendering, anime, cartoon, or any other style genre.
+- If in doubt between matching the style exactly or making the change look slightly better, ALWAYS choose style matching.`,
+      };
+
       const fullPrompt = `Edit this image precisely according to the instruction below. This is for a professional production asset.
 
 IMAGE SPECIFICATIONS:
@@ -1801,8 +1904,9 @@ IMAGE SPECIFICATIONS:
 - Target aspect ratio: ${aspectRatio}
 - Quality tier: ${imageSize}
 
+${styleInstructions[fidelity]}
+
 CRITICAL RULES:
-- Maintain the EXACT same art style, illustration style, line weight, and color palette as the original image.
 - Maintain the EXACT same aspect ratio and proportions of the original image — do NOT crop, stretch, or compress the content.
 - Keep the main subject (character, object, etc.) at the EXACT same scale and size — do NOT resize, shrink, or condense it (unless specifically asked to change size).
 
@@ -1825,10 +1929,8 @@ ${state.sourceImage.hasTransparency
 
 OTHER RULES:
 - Only modify what is explicitly requested — everything else must remain pixel-perfect identical
-- The output must look like it was created by the same artist as the original
 - Do NOT add any text, watermarks, or borders
 - Do NOT change the background unless specifically asked to
-- Match the same level of detail and rendering quality as the input
 
 Requested change: ${prompt}`;
 
