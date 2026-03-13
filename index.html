@@ -2059,26 +2059,33 @@ REQUESTED CHANGE: ${prompt}`;
 
       for (let i = 0; i < d.length; i += 4) {
         const r = d[i], g = d[i + 1], b = d[i + 2];
+        const maxC = Math.max(r, g, b);
+        if (maxC === 0) continue;
 
-        // Detect magenta: high R, low G, high B
-        // Pure magenta is (255, 0, 255). We use a generous range.
-        const magentaness = (Math.min(r, b) - g) / 255; // -1..1, higher = more magenta
+        // Magenta detection: R and B are both high relative to G
+        // Use two complementary metrics:
+        // 1. magentaGap: how much R&B exceed G (absolute)
+        const magentaGap = Math.min(r, b) - g;
+        // 2. magentaRatio: how suppressed G is relative to max (works for dark magentas too)
+        const magentaRatio = 1 - (g / maxC); // 0 = grey/white, 1 = pure magenta
 
-        if (magentaness > 0.55) {
-          // Strong magenta — make fully transparent
+        // Both R and B must exceed G for it to be magenta-ish
+        if (r <= g || b <= g) continue;
+
+        if (magentaGap > 100 && magentaRatio > 0.4) {
+          // Strong magenta — fully transparent
           d[i + 3] = 0;
-        } else if (magentaness > 0.15) {
-          // Partial magenta — despill the color and reduce alpha proportionally
-          // The more magenta, the more we correct
-          const strength = (magentaness - 0.15) / 0.4; // 0..1
-          // Pull R and B toward G to remove magenta tint
-          const correction = Math.min(1, strength * 1.5);
-          d[i]     = Math.round(r - (r - g) * correction);
-          d[i + 2] = Math.round(b - (b - g) * correction);
-          // Reduce alpha for heavily contaminated pixels
-          if (strength > 0.5) {
-            d[i + 3] = Math.round(d[i + 3] * (1 - (strength - 0.5) * 1.2));
-          }
+        } else if (magentaGap > 30 && magentaRatio > 0.25) {
+          // Medium magenta — heavy despill + alpha reduction
+          const strength = Math.min(1, (magentaGap - 30) / 70);
+          d[i]     = Math.round(r - (r - g) * strength);
+          d[i + 2] = Math.round(b - (b - g) * strength);
+          d[i + 3] = Math.round(d[i + 3] * (1 - strength * 0.6));
+        } else if (magentaGap > 5 && magentaRatio > 0.12) {
+          // Subtle magenta tint — color correction only
+          const strength = Math.min(1, (magentaGap - 5) / 50);
+          d[i]     = Math.round(r - (r - g) * strength * 0.7);
+          d[i + 2] = Math.round(b - (b - g) * strength * 0.7);
         }
       }
 
@@ -2097,7 +2104,7 @@ REQUESTED CHANGE: ${prompt}`;
       const alpha = new Uint8Array(totalPx);
       for (let i = 0; i < totalPx; i++) alpha[i] = d[i * 4 + 3];
 
-      const EDGE_RADIUS = 6;
+      const EDGE_RADIUS = 10;
       const distFromTransparent = new Uint8Array(totalPx);
       distFromTransparent.fill(255);
       const queue = [];
@@ -2137,15 +2144,21 @@ REQUESTED CHANGE: ${prompt}`;
 
         // Despill magenta from ALL visible pixels near edges
         // Magenta = high R and high B relative to G
-        const magentaStrength = Math.min(r, b) - g;
-        if (magentaStrength > 8) {
-          // Stronger correction near edges, lighter for interior pixels
-          const edgeFactor = isEdge ? Math.min(1, (EDGE_RADIUS - dist + 1) / EDGE_RADIUS) : 0;
-          const alphaFactor = a < 250 ? 1.0 : edgeFactor;
-          const spill = Math.min(1, magentaStrength / 80) * alphaFactor;
-          if (spill > 0.01) {
-            d[i]     = Math.round(r - (r - g) * spill); // pull R toward G
-            d[i + 2] = Math.round(b - (b - g) * spill); // pull B toward G
+        if (r > g && b > g) {
+          const magentaStrength = Math.min(r, b) - g;
+          const maxC = Math.max(r, g, b);
+          const magentaRatio = maxC > 0 ? 1 - (g / maxC) : 0;
+
+          if (magentaStrength > 3 && magentaRatio > 0.08) {
+            // For semi-transparent pixels: always full correction
+            // For opaque pixels near edges: scale by proximity
+            const edgeFactor = isEdge ? Math.min(1, (EDGE_RADIUS - dist + 1) / EDGE_RADIUS) : 0;
+            const alphaFactor = a < 250 ? 1.0 : edgeFactor;
+            const spill = Math.min(1, magentaStrength / 40) * alphaFactor;
+            if (spill > 0.01) {
+              d[i]     = Math.round(r - (r - g) * spill);
+              d[i + 2] = Math.round(b - (b - g) * spill);
+            }
           }
         }
 
